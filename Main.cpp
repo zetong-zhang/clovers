@@ -16,10 +16,15 @@
 #include <sys/stat.h>
 
 #include "cxxopts.hpp"
+// #include <thread>
 #include "BioIO.hpp"
 
 /* run the program in quiet mode */
-static bool   QUIET = false;
+static bool      QUIET = false;
+/* default start codon types     */
+static str_array STARTS { "ATG", "GTG", "TTG" };
+/* default stop codon types      */
+static str_array STOPS  { "TAA", "TAG", "TGA" };
 
 int main(int argc, char *argv[]) {
     std::srand(32522);
@@ -52,7 +57,7 @@ int main(int argc, char *argv[]) {
         ("o,output",   "Specify output file. (default: stdout)",
          cxxopts::value<std::string>())
         
-        ("f,format",   "Select output format (gff, gbk).",
+        ("f,format",   "Select output format (gff, gbk, med).",
          cxxopts::value<std::string>()->default_value("gff"))
         
         ("a,faa",      "Write protein translations to the selected file.",
@@ -61,8 +66,8 @@ int main(int argc, char *argv[]) {
         ("d,fna",      "Write nucleotide sequences of genes to the selected file.",
          cxxopts::value<std::string>());
     
-    /* cds-finder parameters */
-    options.add_options("CDS-Finder")
+    /* clovers parameters */
+    options.add_options("CLOVERS")
         ("g,table",    "Specify a translation table to use.",
          cxxopts::value<uint32_t>()->default_value("11"))
 
@@ -71,22 +76,23 @@ int main(int argc, char *argv[]) {
 
         ("c,circ",     "Treat topology as circular.")
     
-        ("b,bypass",   "Bypass semi-supervised SVM training.")
+        ("p,proc",     "Select procedure (single or meta).",
+         cxxopts::value<std::string>()->default_value("single"))
 
         ("s,thres",    "Specify putative gene score threshold.",
-         cxxopts::value<double>()->default_value("0.5"))
+         cxxopts::value<float>()->default_value("0.499"))
         
         ("t,train",    "Write (if none exists) or use the specified training file.",
          cxxopts::value<std::string>());
     
-    /* tis-finder parameters */
-    options.add_options("TIS-Finder")
-        ("L,longest",  "Bypass TIS-Finder and output longest ORFs")
+    /* tri-tisa+ parameters */
+    options.add_options("TriTISA+")
+        ("n,bypass",   "Bypass TriTISA+ and output longest ORFs.")
 
-        ("E,alter",    "Maxinum number of alternative start sites in an ORF",
-         cxxopts::value<uint32_t>()->default_value("6"))
+        ("M,maxiter",  "Max iteration times for TIS revision.",
+         cxxopts::value<uint32_t>()->default_value("20"))
         
-        ("R,rbs",      "Write RBS model to the selected file.",
+        ("I,tis",      "Write (if none exists) or use the specified TIS model file.",
          cxxopts::value<std::string>());
     
     /* gol-reporter parameters */
@@ -100,8 +106,8 @@ int main(int argc, char *argv[]) {
         ("D,nucl",     "Write nucleotide sequences of overprinted genes to the selected file.",
          cxxopts::value<std::string>())
         
-        ("M,ratio",    "Specify minimum overlap ratio for overprinted genes.",
-         cxxopts::value<double>()->default_value("0.6"));
+        ("R,ratio",    "Specify minimum overlap ratio for overprinted genes.",
+         cxxopts::value<float>()->default_value("0.6"));
     
     cxxopts::ParseResult args;
     try {
@@ -142,21 +148,18 @@ int main(int argc, char *argv[]) {
     if (!QUIET) std::cerr << "Threads Used:" << std::setw(36) << num_threads << '\n';
     
     /* initialize translation table and start/stop codon list */
-    uint32_t table_code = args["table"].as<uint32_t>();
-    str_array starts{ "ATG", "GTG" };
-    str_array stops{ "TAA", "TAG", "TGA" };
-
-    if (table_code == 1) {
-        starts.assign({ "ATG "});
-    } else if (table_code == 4) {
-        stops.assign({ "TAA", "TAG" });
+    uint32_t table = args["table"].as<uint32_t>();
+    if (table == 1) {
+        STARTS.assign({ "ATG "});
+    } else if (table == 4) {
+        STOPS.assign({ "TAA", "TAG" });
         trans_tbl[14] = 'W';
-    } else if (table_code != 11) {
-        std::cerr << "\nError: unsupported translation table " << table_code 
+    } else if (table != 11) {
+        std::cerr << "\nError: unsupported translation table " << table 
                   << " (options: 1 (standard), 4 (mycoplasma, spiroplasma), 11 (bacteria, archaea))\n";
         return 1;
     }
-    if (!QUIET) std::cerr << "Translation Table:" << std::setw(31) << table_code << '\n';
+    if (!QUIET) std::cerr << "Translation Table:" << std::setw(31) << table << '\n';
 
     /* set mininum gene length */
     auto minlen = args["minlen"].as<uint32_t>();
@@ -168,8 +171,8 @@ int main(int argc, char *argv[]) {
 
     /* check output format */
     auto format = args["format"].as<std::string>();
-    if (format != "gff" && format != "gbk") {
-        std::cerr << "\nError: unknown output format (options: gff (GFF3), gbk (GenBank))\n";
+    if (format != "gff" && format != "gbk" && format != "med") {
+        std::cerr << "\nError: unknown output format (options: gff (GFF3), gbk (GenBank), med (MED))\n";
         return 1;
     }
 
@@ -185,11 +188,10 @@ int main(int argc, char *argv[]) {
     if (!QUIET) std::cerr << "Number of Scaffolds: " << std::setw(28) << scaffolds.size() << '\n';
 
     size_t total_len = 0;
-    double gc_cont = 0.0;
+    float gc_cont = 0.0;
 
     /* extract all the orfs */
     bool circ = (bool) args.count("circ");
-    int max_alt = (int) args["alter"].as<uint32_t>();
     bio::orf_array orfs;
     for (int i = 0; i < scaffolds.size(); i ++) {
         const auto sublen = scaffolds[i].sequence.length();
@@ -201,7 +203,7 @@ int main(int argc, char *argv[]) {
         gc_cont += bio_util::gc_count(scaffolds[i].sequence.c_str(), sublen);
 
         if (sublen >= minlen) {
-            bio_util::get_orfs(scaffolds[i], starts, stops, minlen, circ, orfs, max_alt);
+            bio_util::get_orfs(scaffolds[i], STARTS, STOPS, minlen, circ, orfs);
             if (orfs.size() >= 10000000) {
                 std::cerr << "\nError: total ORF exceeds 10000000 and cannot be processed.\n";
                 return 1;
@@ -229,7 +231,7 @@ int main(int argc, char *argv[]) {
     std::sort(orfs.begin(), orfs.end(), [](bio::orf& a, bio::orf& b) { return a.gc_frac < b.gc_frac; });
     int gc_intv_count[N_MODELS+1] = {0};
     {
-        double max_gc = 0.20;
+        float max_gc = 0.20;
         for (int i = 0, j = 0; i < n_orfs; i ++) {
             if (orfs.at(i).gc_frac > max_gc) {
                 max_gc += 0.01;
@@ -240,7 +242,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* convert orfs to zcurve params */
-    double *params = NEW double[DIM_S*n_orfs];
+    float *params = NEW float[DIM_S*n_orfs];
     if (params == nullptr) {
         std::cerr << MEM_ERR_INFO;
         return 1;
@@ -250,7 +252,8 @@ int main(int argc, char *argv[]) {
     /* load pre-trained models and calculate scores */
     if (!model::init_models()) return 1;
     if(!QUIET) std::cerr << "Loaded Model:" << std::setw(37) << "Prokaryota\n";
-    double *i_scores = NEW double[n_orfs]();
+    bool training = args["proc"].as<std::string>() != "meta";
+    float *i_scores = NEW float[n_orfs]();
     if (i_scores == nullptr) {
         std::cerr << MEM_ERR_INFO;
         return 1;
@@ -264,15 +267,14 @@ int main(int argc, char *argv[]) {
         off += gc_intv_count[i];
     }
 
-    /* train rbs-svm model */
+    /* train rbf-svm model */
     if (!QUIET) std::cerr << "\nTraining CDS Model ...";
-    double *d_scores = NEW double[n_orfs]();
+    float *d_scores = NEW float[n_orfs]();
     if (d_scores == nullptr) {
         std::cerr << MEM_ERR_INFO;
         return 1;
     }
-    bool training = !((bool) args.count("bypass"));
-    double mins[DIM_S], maxs[DIM_S];
+    float mins[DIM_S], maxs[DIM_S];
     svm_model* cds_model = nullptr;
     if (training) {
         std::string model_file;
@@ -298,7 +300,7 @@ int main(int argc, char *argv[]) {
         // predict scores
         if (cds_model) {
             #ifdef _OPENMP
-                #pragma omp parallel for schedule(guided)
+                #pragma omp parallel for
             #endif
             for (int i = 0; i < n_orfs; i ++) {
                 d_scores[i] = svm_predict_score(cds_model, params + i*DIM_S, DIM_S);
@@ -311,161 +313,62 @@ int main(int argc, char *argv[]) {
     } else if (!QUIET) std::cerr << std::setw(28) << "Bypassed\n";
 
     /* classifying orfs and selection of seed orfs */
-    auto thres = args["thres"].as<double>();
+    auto thres = args["thres"].as<float>();
     bio::orf_array putative;
-    int_array init_seeds;
     for (int i = 0, j = 0; i < n_orfs; i ++) {
-        orfs[i].score = std::max(i_scores[i], d_scores[i]);
-        if (orfs[i].score > thres) {
-            putative.push_back(orfs[i]);
-            j ++;
-            if (!orfs[i].starts.size()) continue;
-            int up_start = orfs[i].starts.at(0) - minlen;
-            int up_end = orfs[i].starts.back() + minlen;
-            if (up_start < 0 || up_end > orfs[i].host_len) continue;
-            init_seeds.push_back(j-1);
-        }
+        orfs[i].score = std::max(i_scores[i]*W, d_scores[i]);
+        if (orfs[i].score > thres) putative.push_back(orfs[i]);
     }
-    int n_init_seeds = (int) init_seeds.size();
 
-    if (n_init_seeds > 0) {
-        /* plot z-curves for the upstream flanking regions */
-        int plot_range = minlen*2;
-        pch_array r_flankings, p_flankings, q_flankings;
-        int_array s_labels; // labels for start sites
-        flt_array exp_lens; // exp length ratios of orfs
-        double *sum_curve = NEW double[plot_range*3]();
-        if (sum_curve == nullptr) {
-            std::cerr << MEM_ERR_INFO;
-            return 1;
-        }
-        int n_alters = 0;
-        for (int i = 0; i < n_init_seeds; i ++) {
-            bio::orf& pi = putative[init_seeds[i]];
-            char *pstr = pi.pstr - minlen;
-            r_flankings.push_back(pstr);
-            double *curve = NEW double[plot_range*3]();
-            if (curve == nullptr) {
-                std::cerr << MEM_ERR_INFO;
-                return 1;
-            }
-            encoding::z_curve(pstr, plot_range, curve);
-            for (int i = 0; i < plot_range*3; i ++) {
-                sum_curve[i] += curve[i];
-            }
-            delete[] curve;
-            int l0 = pi.end - pi.starts.at(0);
-            for (int j = 0; j < pi.starts.size(); j ++) {
-                int cs = pi.starts[j], ts = pi.t_start;
-                char *pstr = pi.pstr + (cs - ts);
-                p_flankings.push_back(pstr - minlen);
-                q_flankings.push_back(pstr);
-                pi.scores.push_back(n_alters); // index of score
-                s_labels.push_back(cs==ts ? 1 : -1); // label
-                exp_lens.push_back(std::exp(-(double) (pi.end - cs) / l0));
-                n_alters ++;
-            }
-        }
-        for (int i = 0; i < plot_range*3; i ++) sum_curve[i] /= (double) n_init_seeds;
-
-        /* detect RBS region and spacer */
-        bio::region *rbs_region = nullptr;
-        int spacer_len, rbs_len;
-        for (int i = 0; i < 3; i ++) {
-            bio::region *root = NEW bio::region(0, -1);
-            int c = encoding::find_island(sum_curve+i*plot_range, minlen, 6, 0.98, root);
-            if (root == nullptr || c < 0) {
-                std::cerr << MEM_ERR_INFO;
-                return 1;
-            }
-            rbs_region = root->next;
-            for (int i = 0; i < (c - 1); i++) {
-                bio::region *ths = rbs_region;
-                rbs_region = rbs_region->next;
-                delete ths;
-            }
-            delete root;
-            if (rbs_region) {
-                spacer_len = minlen - rbs_region->end + 1;
-                rbs_len = rbs_region->end - rbs_region->start;
-                if ((spacer_len >= 4 && spacer_len <= 13) &&
-                    (rbs_len    >= 3 && rbs_len    <= 10)) break;
-                delete rbs_region;
-                rbs_region = nullptr;
-            }
-        }
-        if (rbs_region == nullptr) {
-            if (!QUIET) std::cerr << "Warning: detect no RBS consensus, using default\n";
-            rbs_region = NEW bio::region(minlen-13, minlen-7);
-        } else {
-            char *cons = bio_util::get_consensus(r_flankings, rbs_region->start, rbs_region->end);
-            if (!QUIET) std::cerr << "RBS Consensus: " << std::setw(35) << ("5'-" + std::string(cons) + "-3'\n")
-                                  << "RBS Spacer Length: " << std::setw(27) << spacer_len << " bp\n"
-                                  << "Number of Alter Starts: " << std::setw(25) << n_alters << "\n";
-            delete[] cons;
-        }
-        
-        bool flag = !(bool) args.count("longest");
-        
-        if (!QUIET) std::cerr << "Training RBS Model ...";
-        if (flag) {
-            /* encode flankings to zcurve params */
-            params = NEW double[DIM_S*n_alters*2];
-            if (params == nullptr) {
-                std::cerr << MEM_ERR_INFO;
-                return 1;
-            }
-            encoding::encode_seqs(p_flankings, minlen, params, 3);
-            encoding::encode_seqs(q_flankings, minlen, params+n_alters*DIM_S, 3);
-            encoding::minmax_scale(params, n_alters*2, DIM_S, mins, maxs);
-
-            /* initiation of RBS model training */
-            double*  rbs_data = model::build_rbs_data(p_flankings, cds_model, params, 
-                                                      rbs_region, plot_range, exp_lens);
-            double*  rbs_model = NEW double[8]();
-            double** p_data = NEW double*[n_alters];
-            double*  rbs_scores = NEW double[n_alters];
-            if (rbs_data == nullptr || rbs_model == nullptr || p_data == nullptr || rbs_scores == nullptr) {
-                std::cerr << MEM_ERR_INFO;
-                return 1;
-            }
-            int ns_alt = n_alters;
-            for (int i = 0; i < ns_alt; i ++) p_data[i] = rbs_data + 7*i;
-            
-            /* train fisher model */
-            flag = model::fisher_train(p_data, ns_alt, 7, s_labels.data(), rbs_model);
-            if (flag) {
-                /* assign fisher scores to all alter starts */
-                model::fisher_predict(rbs_data, n_alters, 7, rbs_model, rbs_scores);
-                ns_alt = 0;
-                for (int i = 0; i < n_init_seeds; i ++) {
-                    bio::orf& pi = putative[init_seeds[i]];
-                    /* find the best alter start */
-                    int max_idx = -1;
-                    double max_score = std::numeric_limits<double>::lowest();
-                    for (int j = 0; j < pi.starts.size(); j ++) {
-                        int score_idx = pi.scores[j];
-                        if (rbs_scores[score_idx] > max_score) {
-                            max_score = rbs_scores[score_idx];
-                            max_idx = j;
-                        }
-                    }
-                    int b_start = pi.starts[max_idx];
-                    if (max_idx> -1 && max_score > 0) {
-                        pi.seq = pi.seq + (b_start - pi.t_start);
-                        pi.len = pi.end - b_start;
-                        pi.t_start = b_start;
-                    }
+    /* revise gene starts*/
+    bool flag = !(bool) args.count("bypass");
+    if (flag) {
+        if (!QUIET) std::cerr << "Revising TIS Model ..." << std::setw(27) << "Round #0";
+        int n_seeds = 0, max_alter;
+        for (int i = 0; i < putative.size(); i ++) 
+            if (putative[i].len >= 300) n_seeds ++;
+        float *params = nullptr, pFU, pFD;
+        auto maxiter = args["maxiter"].as<uint32_t>();
+        std::string model_file;
+        if (args.count("tis")) {
+            model_file = args["tis"].as<std::string>();
+            if (bio_io::file_exists(model_file)) {
+                params = NEW float[TIS_S];
+                if (!bio_io::read_model(params, max_alter, pFU, pFD, model_file)) {
+                    delete[] params;
+                    params = nullptr;
                 }
             }
-
-            if (!QUIET) std::cerr << std::setw(28) << (flag ? "Done\n" : "Skipped\n");
-        } else if (!QUIET) std::cerr << std::setw(28) << "Bybassed\n";
-    }
+        }
+        if (params == nullptr && n_seeds >= 10) {
+            params = NEW float[TIS_S];
+            if (params == nullptr) {
+                std::cerr << MEM_ERR_INFO << '\n';
+                return 1;
+            }
+            int round = 0;
+            for (int order = 1; order < 3; order ++) {
+                for (int iter = 0; iter < maxiter; iter ++) {
+                    round += 1;
+                    if (!QUIET) std::cerr << "\rRevising TIS Model ..." << std::setw(27) 
+                                          << "Round #" + std::to_string(round);
+                    model::mm_train(putative, order, params, STARTS, table, pFU, pFD, max_alter);
+                    float ratio = model::mm_revise(putative, order, params, pFU, pFD, max_alter);
+                    if (ratio > 0.9) break;
+                }
+            }
+        } else if (params != nullptr) {
+            model::mm_revise(putative, 2, params, pFU, pFD, max_alter);
+        } else if (!QUIET) std::cerr << "\rRevising TIS Model ..." << std::setw(27) << "Skipped";
+        if (params && !model_file.empty()) {
+            bio_io::write_model(params, max_alter, pFU, pFD, model_file);
+        }
+        delete[] params;
+    } else if (!QUIET) std::cerr << "Revising TIS Model ..." << std::setw(27) << "Bybassed";
 
     if (cds_model) svm_free_model_content(cds_model);
     int num_putative = (int) putative.size();
-    if (!QUIET) std::cerr << "Number of Putative Genes:" << std::setw(24) << num_putative << "\n";
+    if (!QUIET) std::cerr << "\nNumber of Putative Genes:" << std::setw(24) << num_putative << "\n";
 
     delete[] d_scores;
     delete[] i_scores;
@@ -499,7 +402,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* check overprinted genes */
-    double min_ratio = args["ratio"].as<double>();
+    float min_ratio = args["ratio"].as<float>();
     if (min_ratio < 0.0 || min_ratio > 1.0) {
         std::cerr << "\nError: invalid minimum overlap ratio (range: 0.0-1.0)\n";
         return 1;

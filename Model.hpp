@@ -16,6 +16,8 @@
 #define N_HIDDEN  100
 // The number of total params in a mlp model
 #define N_PARAMS  19479
+// Translation initiation site model params
+#define TIS_S 12480
 // The upper limit for threshold of seed ORFs
 #define UP_PROBA  0.6
 
@@ -25,9 +27,11 @@
 #include <cstring>
 #include <iomanip>
 #include <algorithm>
-#include "Encoding.hpp"
+#include <assert.h>
+#include "BioUtil.hpp"
 #include "svm.h"
 
+/* SVM params. */
 extern svm_parameter param;
 
 namespace model {
@@ -37,46 +41,15 @@ namespace model {
      */
     bool       init_models();
     /**
-     * @brief               Build RBS data for training.
-     * @param flankings     The flankings of the ORFs.
-     * @param cds_model     The CDS model.
-     * @param params        The Z-curve params.
-     * @param rbs_region    The RBS region.
-     * @param plot_range    The plot range.
-     * @param exp_lens      The expected lengths.
-     * @return              The RBS data.
-     */
-    double *   build_rbs_data(pch_array &flankings,svm_model* cds_model, double *params,
-                              bio::region *rbs_region, int plot_range, flt_array &exp_lens);
-    /**
      * @brief               Predict the output of a mlp model.
      * @param model_id      The index of the mlp model.
      * @param data          The input data.
      * @param size          The size of the input data.
      * @param probas        The output probabilities.
      */
-    void       mlp_predict(int index, double *data, int size, double *probas);
+    void       mlp_predict(int index, float *data, int size, float *probas);
     /**
-     * @brief               Train a Fisher linear discriminant.
-     * @param data          The input data.
-     * @param size          The size of the input data.
-     * @param dim           The dimension of the input data.
-     * @param labels        The class labels of the input data.
-     * @param coef          The output coefficients.
-     * @return              True if the training is successful.
-     */
-    bool       fisher_train(double **data, int size, int dim, int *labels, double *coef);
-    /**
-     * @brief               Predict the output of a Fisher linear discriminant.
-     * @param data          The input data.
-     * @param size          The size of the input data.
-     * @param dim           The dimension of the input data.
-     * @param coef          The coefficients of the Fisher linear discriminant.
-     * @return              The output scores.
-     */
-    void      fisher_predict(double *data, int size, int dim, double *coef, double *scores);
-    /**
-     * @brief               Train a SVM model.
+     * @brief               Train a SVM model for CDSs.
      * @param params        The SVM parameters.
      * @param size          The size of the input data.
      * @param dim           The dimension of the input data.
@@ -84,8 +57,30 @@ namespace model {
      * @param init_score    The initial scores.
      * @return              The model
      */
-    svm_model* rbf_train(double *params, int size, int dim, double *init_score, 
-                         double *mins, double *maxs);
+    svm_model* rbf_train(float *params, int size, int dim, float *init_score, 
+                         float *mins, float *maxs);
+    /**
+     * @brief               Train a Markov model for TISs.
+     * @param orfs          The ORFs.
+     * @param order         The order of the Markov model.
+     * @param params        The Markov model parameters.
+     * @param starts        The alternative start codons.
+     * @param table         The codon table code.
+     * @return              True if the model is successfully trained.
+     */
+    bool       mm_train (bio::orf_array &orfs, int order, float *params, str_array &starts, 
+                         int table, float &pFU, float &pFD, int &max_alter);
+    /**
+     * @brief               Revise the TISs using the Markov model.
+     * @param orfs          The ORFs.
+     * @param order         The order of the Markov model.
+     * @param params        The Markov model parameters.
+     * @return              The rate of unchanged TISs.
+     */
+    float      mm_revise(bio::orf_array &orfs, int order, float *params,
+                         float &pFU, float &pFD, int &max_alter);
 }
+
+extern float W;
 
 #endif

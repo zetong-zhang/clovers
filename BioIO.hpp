@@ -4,7 +4,7 @@
  * @author      Zetong Zhang, Yan Lin, Feng Gao
  * @version     1.0.0
  * @date        2025-11-30
- * @modified    2026-02-10
+ * @modified    2026-02-28
  * @license     GNU GPLv3
  * @contact     ylin@tju.edu.cn | fgao@tju.edu.cn
  */
@@ -94,7 +94,8 @@ namespace bio_io {
      * @return true If the file is successfully written.
      *         false If the file is not successfully written.
      */
-    bool write_model(svm_model* model, double *mins, double *maxs, const std::string &filename);
+    bool write_model(svm_model* model, float *mins, float *maxs, const std::string &filename);
+    bool write_model(float *params, int max_alter, float pFU, float pFD, const std::string &filename);
     /** 
      * @brief   Read the svm model from a file.
      * 
@@ -105,7 +106,8 @@ namespace bio_io {
      * @return true If the file is successfully read.
      *         false If the file is not successfully read.
      */
-    bool read_model(svm_model *model, double *mins, double *maxs,const std::string &filename);
+    bool read_model(svm_model *model, float *mins, float *maxs,const std::string &filename);
+    bool read_model(float *params, int &max_alter, float &pFU, float &pFD, const std::string &filename);
 }
 
 #endif

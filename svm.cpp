@@ -26,9 +26,9 @@ template <class S, class T> static inline void clone(T*& dst, S* src, int n)
 	dst = new T[n];
 	memcpy((void *)dst,(void *)src,sizeof(T)*n);
 }
-static inline double powi(double base, int times)
+static inline float powi(float base, int times)
 {
-	double tmp = base, ret = 1.0;
+	float tmp = base, ret = 1.0;
 
 	for(int t=times; t>0; t/=2)
 	{
@@ -169,7 +169,6 @@ void Cache::swap_index(int i, int j)
 
 //
 // Kernel evaluation
-//
 // the static method k_function is for doing single kernel evaluation
 // the constructor of Kernel prepares to calculate the l*l kernel matrix
 // the member function get_Q is for getting one column from the Q Matrix
@@ -177,7 +176,7 @@ void Cache::swap_index(int i, int j)
 class QMatrix {
 public:
 	virtual Qfloat *get_Q(int column, int len) const = 0;
-	virtual double *get_QD() const = 0;
+	virtual float *get_QD() const = 0;
 	virtual void swap_index(int i, int j) const = 0;
 	virtual ~QMatrix() {}
 };
@@ -185,13 +184,13 @@ public:
 class Kernel: public QMatrix {
 public:
 	const int dim;
-	Kernel(int l, double * const * x, const svm_parameter& param, int dim);
+	Kernel(int l, float * const * x, const svm_parameter& param, int dim);
 	virtual ~Kernel();
 
-	static double k_function(const double *x, const double *y,
+	static float k_function(const float *x, const float *y,
 				 const svm_parameter& param, int dim);
 	virtual Qfloat *get_Q(int column, int len) const = 0;
-	virtual double *get_QD() const = 0;
+	virtual float *get_QD() const = 0;
 	virtual void swap_index(int i, int j) const	// no so const...
 	{
 		swap(x[i],x[j]);
@@ -199,42 +198,42 @@ public:
 	}
 protected:
 
-	double (Kernel::*kernel_function)(int i, int j) const;
+	float (Kernel::*kernel_function)(int i, int j) const;
 
 private:
-	const double **x;
-	double *x_square;
+	const float **x;
+	float *x_square;
 
 	// svm_parameter
 	const int kernel_type;
 	const int degree;
-	const double gamma;
-	const double coef0;
+	const float gamma;
+	const float coef0;
 
-	static double dot(const double *px, const double *py, int dim);
-	double kernel_linear(int i, int j) const
+	static float dot(const float *px, const float *py, int dim);
+	float kernel_linear(int i, int j) const
 	{
 		return dot(x[i],x[j], dim);
 	}
-	double kernel_poly(int i, int j) const
+	float kernel_poly(int i, int j) const
 	{
 		return powi(gamma*dot(x[i],x[j], dim)+coef0,degree);
 	}
-	double kernel_rbf(int i, int j) const
+	float kernel_rbf(int i, int j) const
 	{
 		return exp(-gamma*(x_square[i]+x_square[j]-2*dot(x[i],x[j], dim)));
 	}
-	double kernel_sigmoid(int i, int j) const
+	float kernel_sigmoid(int i, int j) const
 	{
 		return tanh(gamma*dot(x[i],x[j], dim)+coef0);
 	}
-	double kernel_precomputed(int i, int j) const
+	float kernel_precomputed(int i, int j) const
 	{
 		return x[i][(int)(x[j][0])];
 	}
 };
 
-Kernel::Kernel(int l, double * const * x_, const svm_parameter& param, int dim)
+Kernel::Kernel(int l, float * const * x_, const svm_parameter& param, int dim)
 :kernel_type(param.kernel_type), degree(param.degree),
  gamma(param.gamma), coef0(param.coef0), dim(dim)
 {	
@@ -261,7 +260,7 @@ Kernel::Kernel(int l, double * const * x_, const svm_parameter& param, int dim)
 
 	if(kernel_type == RBF)
 	{
-		x_square = new double[l];
+		x_square = new float[l];
 		for(int i=0;i<l;i++)
 			x_square[i] = dot(x[i],x[i], dim);
 	}
@@ -275,46 +274,50 @@ Kernel::~Kernel()
 	delete[] x_square;
 }
 
-double Kernel::dot(const double *x, const double *y, int dim)
+float Kernel::dot(const float *x, const float *y, int dim)
 {
 #ifdef __AVX__
-    __m256d sum = _mm256_setzero_pd();
+    __m256 sum = _mm256_setzero_ps();
     int i = 0;
 
-    #ifdef __FMA__
-    for (; i + 3 < dim; i += 4) {
-        __m256d vx = _mm256_loadu_pd(x + i);
-        __m256d vy = _mm256_loadu_pd(y + i);
-        sum = _mm256_fmadd_pd(vx, vy, sum);
+#ifdef __FMA__
+    for (; i + 7 < dim; i += 8) {
+        __m256 vx = _mm256_loadu_ps(x + i);
+        __m256 vy = _mm256_loadu_ps(y + i);
+        sum = _mm256_fmadd_ps(vx, vy, sum);
     }
-    #else
-
-    for (; i + 3 < dim; i += 4) {
-        __m256d vx = _mm256_loadu_pd(x + i);
-        __m256d vy = _mm256_loadu_pd(y + i);
-        sum = _mm256_add_pd(sum, _mm256_mul_pd(vx, vy));
+#else
+    for (; i + 7 < dim; i += 8) {
+        __m256 vx = _mm256_loadu_ps(x + i);
+        __m256 vy = _mm256_loadu_ps(y + i);
+        sum = _mm256_add_ps(sum, _mm256_mul_ps(vx, vy));
     }
-    #endif
+#endif
 
-    __m128d lo = _mm256_castpd256_pd128(sum);
-    __m128d hi = _mm256_extractf128_pd(sum, 1);
-    __m128d s2 = _mm_add_pd(lo, hi);
-    double result = _mm_cvtsd_f64(_mm_add_pd(s2, _mm_unpackhi_pd(s2, s2)));
+    // horizontal sum
+    __m128 lo = _mm256_castps256_ps128(sum);
+    __m128 hi = _mm256_extractf128_ps(sum, 1);
+    __m128 s2 = _mm_add_ps(lo, hi);
+    s2 = _mm_add_ps(s2, _mm_movehl_ps(s2, s2));
+    s2 = _mm_add_ss(s2, _mm_shuffle_ps(s2, s2, 1));
+
+    float result = _mm_cvtss_f32(s2);
+
+    // tail
     for (; i < dim; ++i)
         result += x[i] * y[i];
 
     return result;
 
 #else
-    double result = 0.0;
+    float result = 0.0f;
     for (int i = 0; i < dim; ++i)
         result += x[i] * y[i];
     return result;
-
 #endif
 }
 
-double Kernel::k_function(const double *x, const double *y,
+float Kernel::k_function(const float *x, const float *y,
                           const svm_parameter& param, int dim)
 {
     switch(param.kernel_type)
@@ -325,50 +328,54 @@ double Kernel::k_function(const double *x, const double *y,
         case POLY:
             return powi(param.gamma * dot(x,y,dim) + param.coef0, param.degree);
 
-        case RBF:
-        {
-#ifdef __AVX__
-            __m256d sum_vec = _mm256_setzero_pd();
-            int i = 0;
+		case RBF:
+		{
+		#ifdef __AVX__
+			__m256 sum_vec = _mm256_setzero_ps();
+			int i = 0;
 
-            #ifdef __FMA__
+		#ifdef __FMA__
+			for (; i + 7 < dim; i += 8) {
+				__m256 vx = _mm256_loadu_ps(x + i);
+				__m256 vy = _mm256_loadu_ps(y + i);
+				__m256 diff = _mm256_sub_ps(vx, vy);
+				sum_vec = _mm256_fmadd_ps(diff, diff, sum_vec);
+			}
+		#else
+			for (; i + 7 < dim; i += 8) {
+				__m256 vx = _mm256_loadu_ps(x + i);
+				__m256 vy = _mm256_loadu_ps(y + i);
+				__m256 diff = _mm256_sub_ps(vx, vy);
+				__m256 mul  = _mm256_mul_ps(diff, diff);
+				sum_vec = _mm256_add_ps(sum_vec, mul);
+			}
+		#endif
 
-            for (; i + 3 < dim; i += 4) {
-                __m256d vx = _mm256_loadu_pd(x + i);
-                __m256d vy = _mm256_loadu_pd(y + i);
-                __m256d diff = _mm256_sub_pd(vx, vy);
-                sum_vec = _mm256_fmadd_pd(diff, diff, sum_vec);
-            }
-            #else
+			// horizontal sum
+			__m128 lo = _mm256_castps256_ps128(sum_vec);
+			__m128 hi = _mm256_extractf128_ps(sum_vec, 1);
+			__m128 s2 = _mm_add_ps(lo, hi);
+			s2 = _mm_add_ps(s2, _mm_movehl_ps(s2, s2));
+			s2 = _mm_add_ss(s2, _mm_shuffle_ps(s2, s2, 1));
 
-            for (; i + 3 < dim; i += 4) {
-                __m256d vx = _mm256_loadu_pd(x + i);
-                __m256d vy = _mm256_loadu_pd(y + i);
-                __m256d diff = _mm256_sub_pd(vx, vy);
-                __m256d mul  = _mm256_mul_pd(diff, diff);
-                sum_vec = _mm256_add_pd(sum_vec, mul);
-            }
-            #endif
+			float sum = _mm_cvtss_f32(s2);
 
-            __m128d lo = _mm256_castpd256_pd128(sum_vec);
-            __m128d hi = _mm256_extractf128_pd(sum_vec, 1);
-            __m128d s2 = _mm_add_pd(lo, hi);
-            double sum = _mm_cvtsd_f64(_mm_add_pd(s2, _mm_unpackhi_pd(s2, s2)));
+			for (; i < dim; ++i) {
+				float diff = x[i] - y[i];
+				sum += diff * diff;
+			}
 
-            for (; i < dim; ++i)
-                sum += (x[i] - y[i]) * (x[i] - y[i]);
+			return expf(-param.gamma * sum);
 
-            return exp(-param.gamma * sum);
-
-#else
-            double sum = 0.0;
-            for (int i = 0; i < dim; ++i) {
-                double diff = x[i] - y[i];
-                sum += diff * diff;
-            }
-            return exp(-param.gamma * sum);
-#endif
-        }
+		#else
+			float sum = 0.0f;
+			for (int i = 0; i < dim; ++i) {
+				float diff = x[i] - y[i];
+				sum += diff * diff;
+			}
+			return expf(-param.gamma * sum);
+		#endif
+		}
 
         case SIGMOID:
             return tanh(param.gamma * dot(x,y,dim) + param.coef0);
@@ -405,34 +412,34 @@ public:
 	virtual ~Solver() {};
 
 	struct SolutionInfo {
-		double obj;
-		double rho;
-		double upper_bound_p;
-		double upper_bound_n;
-		double r;	// for Solver_NU
+		float obj;
+		float rho;
+		float upper_bound_p;
+		float upper_bound_n;
+		float r;	// for Solver_NU
 	};
 
-	void Solve(int l, const QMatrix& Q, const double *p_, const schar *y_,
-		   double *alpha_, double Cp, double Cn, double eps,
+	void Solve(int l, const QMatrix& Q, const float *p_, const schar *y_,
+		   float *alpha_, float Cp, float Cn, float eps,
 		   SolutionInfo* si, int shrinking);
 protected:
 	int active_size;
 	schar *y;
-	double *G;		// gradient of objective function
+	float *G;		// gradient of objective function
 	enum { LOWER_BOUND, UPPER_BOUND, FREE };
 	char *alpha_status;	// LOWER_BOUND, UPPER_BOUND, FREE
-	double *alpha;
+	float *alpha;
 	const QMatrix *Q;
-	const double *QD;
-	double eps;
-	double Cp,Cn;
-	double *p;
+	const float *QD;
+	float eps;
+	float Cp,Cn;
+	float *p;
 	int *active_set;
-	double *G_bar;		// gradient, if we treat free variables as 0
+	float *G_bar;		// gradient, if we treat free variables as 0
 	int l;
 	bool unshrink;	// XXX
 
-	double get_C(int i)
+	float get_C(int i)
 	{
 		return (y[i] > 0)? Cp : Cn;
 	}
@@ -450,10 +457,10 @@ protected:
 	void swap_index(int i, int j);
 	void reconstruct_gradient();
 	virtual int select_working_set(int &i, int &j);
-	virtual double calculate_rho();
+	virtual float calculate_rho();
 	virtual void do_shrinking();
 private:
-	bool be_shrunk(int i, double Gmax1, double Gmax2);
+	bool be_shrunk(int i, float Gmax1, float Gmax2);
 };
 
 void Solver::swap_index(int i, int j)
@@ -500,15 +507,15 @@ void Solver::reconstruct_gradient()
 			if(is_free(i))
 			{
 				const Qfloat *Q_i = Q->get_Q(i,l);
-				double alpha_i = alpha[i];
+				float alpha_i = alpha[i];
 				for(j=active_size;j<l;j++)
 					G[j] += alpha_i * Q_i[j];
 			}
 	}
 }
 
-void Solver::Solve(int l, const QMatrix& Q, const double *p_, const schar *y_,
-		   double *alpha_, double Cp, double Cn, double eps,
+void Solver::Solve(int l, const QMatrix& Q, const float *p_, const schar *y_,
+		   float *alpha_, float Cp, float Cn, float eps,
 		   SolutionInfo* si, int shrinking)
 {
 	this->l = l;
@@ -539,8 +546,8 @@ void Solver::Solve(int l, const QMatrix& Q, const double *p_, const schar *y_,
 
 	// initialize gradient
 	{
-		G = new double[l];
-		G_bar = new double[l];
+		G = new float[l];
+		G_bar = new float[l];
 		int i;
 		for(i=0;i<l;i++)
 		{
@@ -551,7 +558,7 @@ void Solver::Solve(int l, const QMatrix& Q, const double *p_, const schar *y_,
 			if(!is_lower_bound(i))
 			{
 				const Qfloat *Q_i = Q.get_Q(i,l);
-				double alpha_i = alpha[i];
+				float alpha_i = alpha[i];
 				int j;
 				for(j=0;j<l;j++)
 					G[j] += alpha_i*Q_i[j];
@@ -597,19 +604,19 @@ void Solver::Solve(int l, const QMatrix& Q, const double *p_, const schar *y_,
 		const Qfloat *Q_i = Q.get_Q(i,active_size);
 		const Qfloat *Q_j = Q.get_Q(j,active_size);
 
-		double C_i = get_C(i);
-		double C_j = get_C(j);
+		float C_i = get_C(i);
+		float C_j = get_C(j);
 
-		double old_alpha_i = alpha[i];
-		double old_alpha_j = alpha[j];
+		float old_alpha_i = alpha[i];
+		float old_alpha_j = alpha[j];
 
 		if(y[i]!=y[j])
 		{
-			double quad_coef = QD[i]+QD[j]+2*Q_i[j];
+			float quad_coef = QD[i]+QD[j]+2*Q_i[j];
 			if (quad_coef <= 0)
 				quad_coef = TAU;
-			double delta = (-G[i]-G[j])/quad_coef;
-			double diff = alpha[i] - alpha[j];
+			float delta = (-G[i]-G[j])/quad_coef;
+			float diff = alpha[i] - alpha[j];
 			alpha[i] += delta;
 			alpha[j] += delta;
 
@@ -648,11 +655,11 @@ void Solver::Solve(int l, const QMatrix& Q, const double *p_, const schar *y_,
 		}
 		else
 		{
-			double quad_coef = QD[i]+QD[j]-2*Q_i[j];
+			float quad_coef = QD[i]+QD[j]-2*Q_i[j];
 			if (quad_coef <= 0)
 				quad_coef = TAU;
-			double delta = (G[i]-G[j])/quad_coef;
-			double sum = alpha[i] + alpha[j];
+			float delta = (G[i]-G[j])/quad_coef;
+			float sum = alpha[i] + alpha[j];
 			alpha[i] -= delta;
 			alpha[j] += delta;
 
@@ -692,8 +699,8 @@ void Solver::Solve(int l, const QMatrix& Q, const double *p_, const schar *y_,
 
 		// update G
 
-		double delta_alpha_i = alpha[i] - old_alpha_i;
-		double delta_alpha_j = alpha[j] - old_alpha_j;
+		float delta_alpha_i = alpha[i] - old_alpha_i;
+		float delta_alpha_j = alpha[j] - old_alpha_j;
 
 		for(int k=0;k<active_size;k++)
 		{
@@ -749,7 +756,7 @@ void Solver::Solve(int l, const QMatrix& Q, const double *p_, const schar *y_,
 
 	// calculate objective value
 	{
-		double v = 0;
+		float v = 0;
 		int i;
 		for(i=0;i<l;i++)
 			v += alpha[i] * (G[i] + p[i]);
@@ -792,11 +799,11 @@ int Solver::select_working_set(int &out_i, int &out_j)
 	//    (if quadratic coefficeint <= 0, replace it with tau)
 	//    -y_j*grad(f)_j < -y_i*grad(f)_i, j in I_low(\alpha)
 
-	double Gmax = -INF;
-	double Gmax2 = -INF;
+	float Gmax = -INF;
+	float Gmax2 = -INF;
 	int Gmax_idx = -1;
 	int Gmin_idx = -1;
-	double obj_diff_min = INF;
+	float obj_diff_min = INF;
 
 	for(int t=0;t<active_size;t++)
 		if(y[t]==+1)
@@ -829,13 +836,13 @@ int Solver::select_working_set(int &out_i, int &out_j)
 		{
 			if (!is_lower_bound(j))
 			{
-				double grad_diff=Gmax+G[j];
+				float grad_diff=Gmax+G[j];
 				if (G[j] >= Gmax2)
 					Gmax2 = G[j];
 				if (grad_diff > 0)
 				{
-					double obj_diff;
-					double quad_coef = QD[i]+QD[j]-2.0*y[i]*Q_i[j];
+					float obj_diff;
+					float quad_coef = QD[i]+QD[j]-2.0*y[i]*Q_i[j];
 					if (quad_coef > 0)
 						obj_diff = -(grad_diff*grad_diff)/quad_coef;
 					else
@@ -853,13 +860,13 @@ int Solver::select_working_set(int &out_i, int &out_j)
 		{
 			if (!is_upper_bound(j))
 			{
-				double grad_diff= Gmax-G[j];
+				float grad_diff= Gmax-G[j];
 				if (-G[j] >= Gmax2)
 					Gmax2 = -G[j];
 				if (grad_diff > 0)
 				{
-					double obj_diff;
-					double quad_coef = QD[i]+QD[j]+2.0*y[i]*Q_i[j];
+					float obj_diff;
+					float quad_coef = QD[i]+QD[j]+2.0*y[i]*Q_i[j];
 					if (quad_coef > 0)
 						obj_diff = -(grad_diff*grad_diff)/quad_coef;
 					else
@@ -883,7 +890,7 @@ int Solver::select_working_set(int &out_i, int &out_j)
 	return 0;
 }
 
-bool Solver::be_shrunk(int i, double Gmax1, double Gmax2)
+bool Solver::be_shrunk(int i, float Gmax1, float Gmax2)
 {
 	if(is_upper_bound(i))
 	{
@@ -906,8 +913,8 @@ bool Solver::be_shrunk(int i, double Gmax1, double Gmax2)
 void Solver::do_shrinking()
 {
 	int i;
-	double Gmax1 = -INF;		// max { -y_i * grad(f)_i | i in I_up(\alpha) }
-	double Gmax2 = -INF;		// max { y_i * grad(f)_i | i in I_low(\alpha) }
+	float Gmax1 = -INF;		// max { -y_i * grad(f)_i | i in I_up(\alpha) }
+	float Gmax2 = -INF;		// max { y_i * grad(f)_i | i in I_low(\alpha) }
 
 	// find maximal violating pair first
 	for(i=0;i<active_size;i++)
@@ -963,14 +970,14 @@ void Solver::do_shrinking()
 		}
 }
 
-double Solver::calculate_rho()
+float Solver::calculate_rho()
 {
-	double r;
+	float r;
 	int nr_free = 0;
-	double ub = INF, lb = -INF, sum_free = 0;
+	float ub = INF, lb = -INF, sum_free = 0;
 	for(int i=0;i<active_size;i++)
 	{
-		double yG = y[i]*G[i];
+		float yG = y[i]*G[i];
 
 		if(is_upper_bound(i))
 		{
@@ -1010,8 +1017,8 @@ class Solver_NU: public Solver
 {
 public:
 	Solver_NU() {}
-	void Solve(int l, const QMatrix& Q, const double *p, const schar *y,
-		   double *alpha, double Cp, double Cn, double eps,
+	void Solve(int l, const QMatrix& Q, const float *p, const schar *y,
+		   float *alpha, float Cp, float Cn, float eps,
 		   SolutionInfo* si, int shrinking)
 	{
 		this->si = si;
@@ -1020,8 +1027,8 @@ public:
 private:
 	SolutionInfo *si;
 	int select_working_set(int &i, int &j);
-	double calculate_rho();
-	bool be_shrunk(int i, double Gmax1, double Gmax2, double Gmax3, double Gmax4);
+	float calculate_rho();
+	bool be_shrunk(int i, float Gmax1, float Gmax2, float Gmax3, float Gmax4);
 	void do_shrinking();
 };
 
@@ -1034,16 +1041,16 @@ int Solver_NU::select_working_set(int &out_i, int &out_j)
 	//    (if quadratic coefficeint <= 0, replace it with tau)
 	//    -y_j*grad(f)_j < -y_i*grad(f)_i, j in I_low(\alpha)
 
-	double Gmaxp = -INF;
-	double Gmaxp2 = -INF;
+	float Gmaxp = -INF;
+	float Gmaxp2 = -INF;
 	int Gmaxp_idx = -1;
 
-	double Gmaxn = -INF;
-	double Gmaxn2 = -INF;
+	float Gmaxn = -INF;
+	float Gmaxn2 = -INF;
 	int Gmaxn_idx = -1;
 
 	int Gmin_idx = -1;
-	double obj_diff_min = INF;
+	float obj_diff_min = INF;
 
 	for(int t=0;t<active_size;t++)
 		if(y[t]==+1)
@@ -1080,13 +1087,13 @@ int Solver_NU::select_working_set(int &out_i, int &out_j)
 		{
 			if (!is_lower_bound(j))
 			{
-				double grad_diff=Gmaxp+G[j];
+				float grad_diff=Gmaxp+G[j];
 				if (G[j] >= Gmaxp2)
 					Gmaxp2 = G[j];
 				if (grad_diff > 0)
 				{
-					double obj_diff;
-					double quad_coef = QD[ip]+QD[j]-2*Q_ip[j];
+					float obj_diff;
+					float quad_coef = QD[ip]+QD[j]-2*Q_ip[j];
 					if (quad_coef > 0)
 						obj_diff = -(grad_diff*grad_diff)/quad_coef;
 					else
@@ -1104,13 +1111,13 @@ int Solver_NU::select_working_set(int &out_i, int &out_j)
 		{
 			if (!is_upper_bound(j))
 			{
-				double grad_diff=Gmaxn-G[j];
+				float grad_diff=Gmaxn-G[j];
 				if (-G[j] >= Gmaxn2)
 					Gmaxn2 = -G[j];
 				if (grad_diff > 0)
 				{
-					double obj_diff;
-					double quad_coef = QD[in]+QD[j]-2*Q_in[j];
+					float obj_diff;
+					float quad_coef = QD[in]+QD[j]-2*Q_in[j];
 					if (quad_coef > 0)
 						obj_diff = -(grad_diff*grad_diff)/quad_coef;
 					else
@@ -1138,7 +1145,7 @@ int Solver_NU::select_working_set(int &out_i, int &out_j)
 	return 0;
 }
 
-bool Solver_NU::be_shrunk(int i, double Gmax1, double Gmax2, double Gmax3, double Gmax4)
+bool Solver_NU::be_shrunk(int i, float Gmax1, float Gmax2, float Gmax3, float Gmax4)
 {
 	if(is_upper_bound(i))
 	{
@@ -1160,10 +1167,10 @@ bool Solver_NU::be_shrunk(int i, double Gmax1, double Gmax2, double Gmax3, doubl
 
 void Solver_NU::do_shrinking()
 {
-	double Gmax1 = -INF;	// max { -y_i * grad(f)_i | y_i = +1, i in I_up(\alpha) }
-	double Gmax2 = -INF;	// max { y_i * grad(f)_i | y_i = +1, i in I_low(\alpha) }
-	double Gmax3 = -INF;	// max { -y_i * grad(f)_i | y_i = -1, i in I_up(\alpha) }
-	double Gmax4 = -INF;	// max { y_i * grad(f)_i | y_i = -1, i in I_low(\alpha) }
+	float Gmax1 = -INF;	// max { -y_i * grad(f)_i | y_i = +1, i in I_up(\alpha) }
+	float Gmax2 = -INF;	// max { y_i * grad(f)_i | y_i = +1, i in I_low(\alpha) }
+	float Gmax3 = -INF;	// max { -y_i * grad(f)_i | y_i = -1, i in I_up(\alpha) }
+	float Gmax4 = -INF;	// max { y_i * grad(f)_i | y_i = -1, i in I_low(\alpha) }
 
 	// find maximal violating pair first
 	int i;
@@ -1210,12 +1217,12 @@ void Solver_NU::do_shrinking()
 		}
 }
 
-double Solver_NU::calculate_rho()
+float Solver_NU::calculate_rho()
 {
 	int nr_free1 = 0,nr_free2 = 0;
-	double ub1 = INF, ub2 = INF;
-	double lb1 = -INF, lb2 = -INF;
-	double sum_free1 = 0, sum_free2 = 0;
+	float ub1 = INF, ub2 = INF;
+	float lb1 = -INF, lb2 = -INF;
+	float sum_free1 = 0, sum_free2 = 0;
 
 	for(int i=0;i<active_size;i++)
 	{
@@ -1245,7 +1252,7 @@ double Solver_NU::calculate_rho()
 		}
 	}
 
-	double r1,r2;
+	float r1,r2;
 	if(nr_free1 > 0)
 		r1 = sum_free1/nr_free1;
 	else
@@ -1271,7 +1278,7 @@ public:
 	{
 		clone(y,y_,prob.l);
 		cache = new Cache(prob.l,(size_t)(param.cache_size*(1<<20)));
-		QD = new double[prob.l];
+		QD = new float[prob.l];
 		for(int i=0;i<prob.l;i++)
 			QD[i] = (this->*kernel_function)(i,i);
 	}
@@ -1291,7 +1298,7 @@ public:
 		return data;
 	}
 
-	double *get_QD() const
+	float *get_QD() const
 	{
 		return QD;
 	}
@@ -1313,7 +1320,7 @@ public:
 private:
 	schar *y;
 	Cache *cache;
-	double *QD;
+	float *QD;
 };
 
 class ONE_CLASS_Q: public Kernel
@@ -1323,7 +1330,7 @@ public:
 	:Kernel(prob.l, prob.x, param, dim)
 	{
 		cache = new Cache(prob.l,(size_t)(param.cache_size*(1<<20)));
-		QD = new double[prob.l];
+		QD = new float[prob.l];
 		for(int i=0;i<prob.l;i++)
 			QD[i] = (this->*kernel_function)(i,i);
 	}
@@ -1340,7 +1347,7 @@ public:
 		return data;
 	}
 
-	double *get_QD() const
+	float *get_QD() const
 	{
 		return QD;
 	}
@@ -1359,7 +1366,7 @@ public:
 	}
 private:
 	Cache *cache;
-	double *QD;
+	float *QD;
 };
 
 class SVR_Q: public Kernel
@@ -1370,7 +1377,7 @@ public:
 	{
 		l = prob.l;
 		cache = new Cache(l,(size_t)(param.cache_size*(1<<20)));
-		QD = new double[2*l];
+		QD = new float[2*l];
 		sign = new schar[2*l];
 		index = new int[2*l];
 		for(int k=0;k<l;k++)
@@ -1416,7 +1423,7 @@ public:
 		return buf;
 	}
 
-	double *get_QD() const
+	float *get_QD() const
 	{
 		return QD;
 	}
@@ -1437,7 +1444,7 @@ private:
 	int *index;
 	mutable int next_buffer;
 	Qfloat *buffer[2];
-	double *QD;
+	float *QD;
 };
 
 //
@@ -1445,10 +1452,10 @@ private:
 //
 static void solve_c_svc(
 	const svm_problem *prob, const svm_parameter* param, int dim,
-	double *alpha, Solver::SolutionInfo* si, double Cp, double Cn)
+	float *alpha, Solver::SolutionInfo* si, float Cp, float Cn)
 {
 	int l = prob->l;
-	double *minus_ones = new double[l];
+	float *minus_ones = new float[l];
 	schar *y = new schar[l];
 
 	int i;
@@ -1464,7 +1471,7 @@ static void solve_c_svc(
 	s.Solve(l, SVC_Q(*prob,*param,y,dim), minus_ones, y,
 		alpha, Cp, Cn, param->eps, si, param->shrinking);
 
-	double sum_alpha=0;
+	float sum_alpha=0;
 	for(i=0;i<l;i++)
 		sum_alpha += alpha[i];
 
@@ -1477,11 +1484,11 @@ static void solve_c_svc(
 
 static void solve_nu_svc(
 	const svm_problem *prob, const svm_parameter *param,
-	double *alpha, Solver::SolutionInfo* si, int dim)
+	float *alpha, Solver::SolutionInfo* si, int dim)
 {
 	int i;
 	int l = prob->l;
-	double nu = param->nu;
+	float nu = param->nu;
 
 	schar *y = new schar[l];
 
@@ -1491,22 +1498,22 @@ static void solve_nu_svc(
 		else
 			y[i] = -1;
 
-	double sum_pos = nu*l/2;
-	double sum_neg = nu*l/2;
+	float sum_pos = nu*l/2;
+	float sum_neg = nu*l/2;
 
 	for(i=0;i<l;i++)
 		if(y[i] == +1)
 		{
-			alpha[i] = min(1.0,sum_pos);
+			alpha[i] = min(1.0F,sum_pos);
 			sum_pos -= alpha[i];
 		}
 		else
 		{
-			alpha[i] = min(1.0,sum_neg);
+			alpha[i] = min(1.0F,sum_neg);
 			sum_neg -= alpha[i];
 		}
 
-	double *zeros = new double[l];
+	float *zeros = new float[l];
 
 	for(i=0;i<l;i++)
 		zeros[i] = 0;
@@ -1514,7 +1521,7 @@ static void solve_nu_svc(
 	Solver_NU s;
 	s.Solve(l, SVC_Q(*prob,*param,y, dim), zeros, y,
 		alpha, 1.0, 1.0, param->eps, si,  param->shrinking);
-	double r = si->r;
+	float r = si->r;
 
 	for(i=0;i<l;i++)
 		alpha[i] *= y[i]/r;
@@ -1530,10 +1537,10 @@ static void solve_nu_svc(
 
 static void solve_one_class(
 	const svm_problem *prob, const svm_parameter *param,
-	double *alpha, Solver::SolutionInfo* si, int dim)
+	float *alpha, Solver::SolutionInfo* si, int dim)
 {
 	int l = prob->l;
-	double *zeros = new double[l];
+	float *zeros = new float[l];
 	schar *ones = new schar[l];
 	int i;
 
@@ -1562,11 +1569,11 @@ static void solve_one_class(
 
 static void solve_epsilon_svr(
 	const svm_problem *prob, const svm_parameter *param,
-	double *alpha, Solver::SolutionInfo* si, int dim)
+	float *alpha, Solver::SolutionInfo* si, int dim)
 {
 	int l = prob->l;
-	double *alpha2 = new double[2*l];
-	double *linear_term = new double[2*l];
+	float *alpha2 = new float[2*l];
+	float *linear_term = new float[2*l];
 	schar *y = new schar[2*l];
 	int i;
 
@@ -1585,7 +1592,7 @@ static void solve_epsilon_svr(
 	s.Solve(2*l, SVR_Q(*prob,*param,dim), linear_term, y,
 		alpha2, param->C, param->C, param->eps, si, param->shrinking);
 
-	double sum_alpha = 0;
+	float sum_alpha = 0;
 	for(i=0;i<l;i++)
 	{
 		alpha[i] = alpha2[i] - alpha2[i+l];
@@ -1599,16 +1606,16 @@ static void solve_epsilon_svr(
 
 static void solve_nu_svr(
 	const svm_problem *prob, const svm_parameter *param,
-	double *alpha, Solver::SolutionInfo* si, int dim)
+	float *alpha, Solver::SolutionInfo* si, int dim)
 {
 	int l = prob->l;
-	double C = param->C;
-	double *alpha2 = new double[2*l];
-	double *linear_term = new double[2*l];
+	float C = param->C;
+	float *alpha2 = new float[2*l];
+	float *linear_term = new float[2*l];
 	schar *y = new schar[2*l];
 	int i;
 
-	double sum = C * param->nu * l / 2;
+	float sum = C * param->nu * l / 2;
 	for(i=0;i<l;i++)
 	{
 		alpha2[i] = alpha2[i+l] = min(sum,C);
@@ -1638,15 +1645,15 @@ static void solve_nu_svr(
 //
 struct decision_function
 {
-	double *alpha;
-	double rho;
+	float *alpha;
+	float rho;
 };
 
 static decision_function svm_train_one(
 	const svm_problem *prob, const svm_parameter *param,
-	double Cp, double Cn, int dim)
+	float Cp, float Cn, int dim)
 {
-	double *alpha = Malloc(double,prob->l);
+	float *alpha = Malloc(float,prob->l);
 	Solver::SolutionInfo si;
 	switch(param->svm_type)
 	{
@@ -1792,14 +1799,14 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param, int di
 		svm_group_classes(prob,&nr_class,&label,&start,&count,perm);
 		if(nr_class <= 1) return nullptr;
 
-		double **x = Malloc(double *,l);
+		float **x = Malloc(float *,l);
 		int i;
 		for(i=0;i<l;i++)
 			x[i] = prob->x[perm[i]];
 
 		// calculate weighted C
 
-		double *weighted_C = Malloc(double, nr_class);
+		float *weighted_C = Malloc(float, nr_class);
 		for(i=0;i<nr_class;i++)
 			weighted_C[i] = param->C;
 		for(i=0;i<param->nr_weight;i++)
@@ -1821,7 +1828,7 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param, int di
 			nonzero[i] = false;
 		decision_function *f = Malloc(decision_function,nr_class*(nr_class-1)/2);
 
-		double *probA=NULL,*probB=NULL;
+		float *probA=NULL,*probB=NULL;
 		int p = 0;
 		for(i=0;i<nr_class;i++)
 			for(int j=i+1;j<nr_class;j++)
@@ -1830,8 +1837,8 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param, int di
 				int si = start[i], sj = start[j];
 				int ci = count[i], cj = count[j];
 				sub_prob.l = ci+cj;
-				sub_prob.x = Malloc(double *,sub_prob.l);
-				sub_prob.y = Malloc(double,sub_prob.l);
+				sub_prob.x = Malloc(float *,sub_prob.l);
+				sub_prob.y = Malloc(float,sub_prob.l);
 				int k;
 				for(k=0;k<ci;k++)
 				{
@@ -1864,14 +1871,14 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param, int di
 		for(i=0;i<nr_class;i++)
 			model->label[i] = label[i];
 
-		model->rho = Malloc(double,nr_class*(nr_class-1)/2);
+		model->rho = Malloc(float,nr_class*(nr_class-1)/2);
 		for(i=0;i<nr_class*(nr_class-1)/2;i++)
 			model->rho[i] = f[i].rho;
 
 		if(param->probability)
 		{
-			model->probA = Malloc(double,nr_class*(nr_class-1)/2);
-			model->probB = Malloc(double,nr_class*(nr_class-1)/2);
+			model->probA = Malloc(float,nr_class*(nr_class-1)/2);
+			model->probB = Malloc(float,nr_class*(nr_class-1)/2);
 			for(i=0;i<nr_class*(nr_class-1)/2;i++)
 			{
 				model->probA[i] = probA[i];
@@ -1902,7 +1909,7 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param, int di
 		}
 
 		model->l = total_sv;
-		model->SV = Malloc(double *,total_sv);
+		model->SV = Malloc(float *,total_sv);
 		model->sv_indices = Malloc(int,total_sv);
 		p = 0;
 		for(i=0;i<l;i++)
@@ -1917,9 +1924,9 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param, int di
 		for(i=1;i<nr_class;i++)
 			nz_start[i] = nz_start[i-1]+nz_count[i-1];
 
-		model->sv_coef = Malloc(double *,nr_class-1);
+		model->sv_coef = Malloc(float *,nr_class-1);
 		for(i=0;i<nr_class-1;i++)
-			model->sv_coef[i] = Malloc(double,total_sv);
+			model->sv_coef[i] = Malloc(float,total_sv);
 
 		p = 0;
 		for(i=0;i<nr_class;i++)
@@ -1963,13 +1970,13 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param, int di
 	return model;
 }
 
-double svm_predict_score(const struct svm_model *model, const double *x, int dim) {
+float svm_predict_score(const struct svm_model *model, const float *x, int dim) {
     int l = model->l;
-    double *sv_coef = model->sv_coef[0];
-    double sum = 0.0;
+    float *sv_coef = model->sv_coef[0];
+    float sum = 0.0;
 
     for(int i = 0; i < l; i++) {
-        double Kxi = Kernel::k_function(x, model->SV[i], model->param, dim);
+        float Kxi = Kernel::k_function(x, model->SV[i], model->param, dim);
         sum += sv_coef[i] * Kxi;
     }
     sum -= model->rho[0];

@@ -1,7 +1,5 @@
 #include "BioIO.hpp"
 
-// static function declarations
-
 /**
  * @brief   Check if a file is gzipped.
  * 
@@ -198,9 +196,28 @@ static bool write_stream(
         }
         handle << "ORIGIN\n//\n";
         return true;
+    } else if (format == "med") {
+        char *last_scaffold = nullptr;
+        for (int i = 0, j = 0; i < count; i ++) {
+            if (!last_scaffold || std::strcmp(orfs[i].host, last_scaffold)) {
+                handle << "# " << orfs[i].host << "\n";
+                last_scaffold = orfs[i].host;
+            }
+            bool neg_strand = (bool)(orfs[i].strand == '-');
+            int rstart, rend, host_len = orfs[i].host_len;
+            if (!neg_strand) {
+                rstart = orfs[i].t_start + 1;
+                rend = orfs[i].end;
+            } else {
+                rstart = host_len - orfs[i].end + 1;
+                rend = host_len - orfs[i].t_start;
+            }
+            handle << rstart << ' ' << rend << '\t' << orfs[i].strand << "\n";
+        }
+        return true;
     }
     std::cerr << "Error: unsupported output format '" 
-              << format << "' (options: gff, gbk)\n";
+              << format << "' (options: gff, gbk, med)\n";
     return false;
 }
 // API functions 
@@ -250,7 +267,7 @@ bool bio_io::write_result(
     else {
         std::ofstream handle(filename);
         if (!handle.is_open()) {
-            std::cerr << "\nError: failed to open " << filename << std::endl;
+            std::cerr << "\nError: failed to open " << filename << '\n';
             return false;
         }
         return write_stream(handle, orfs, format);
@@ -263,7 +280,7 @@ bool bio_io::write_faa(
 ) {
     std::ofstream handle(filename);
     if (!handle.is_open()) {
-        std::cerr << "\nError: failed to open " << filename << std::endl;
+        std::cerr << "\nError: failed to open " << filename << '\n';
         return false;
     }
     int count = (int) orfs.size();
@@ -304,7 +321,7 @@ bool bio_io::write_fna(
 ) {
     std::ofstream handle(filename);
     if (!handle.is_open()) {
-        std::cerr << "\nError: failed to open " << filename << std::endl;
+        std::cerr << "\nError: failed to open " << filename << '\n';
         return false;
     }
     int count = (int) orfs.size();
@@ -332,82 +349,132 @@ bool bio_io::write_fna(
 
 bool bio_io::write_model(
     svm_model *model,
-    double *mins, 
-    double *maxs,
+    float *mins, float *maxs,
     const std::string &filename
 ) {
     std::ofstream outfile(filename, std::ios::binary);
     if (!outfile.is_open()) {
-        std::cerr << "\nError: failed to open " << filename << std::endl;
+        std::cerr << "\nError: failed to open " << filename << '\n';
         return false;
     }
-    // write scaler
-    outfile.write((char *) mins, DIM_S * sizeof(double));
-    outfile.write((char *) maxs, DIM_S * sizeof(double));
-    // write gamma
-    double gamma = model->param.gamma;
-    outfile.write((char*) &gamma, sizeof(double));
-    // write number of support vectors
-    int n_sv = model->l;
-    outfile.write((char*) &n_sv, sizeof(int));
-    // write support vectors
-    for (int i = 0; i < n_sv; i ++) {
-        double *sv = model->SV[i];
-        outfile.write((char*) sv, DIM_S * sizeof(double));
+    try {
+        // write scaler
+        outfile.write((char *) mins, DIM_S * sizeof(float));
+        outfile.write((char *) maxs, DIM_S * sizeof(float));
+        // write gamma
+        float gamma = model->param.gamma;
+        outfile.write((char*) &gamma, sizeof(float));
+        // write number of support vectors
+        int n_sv = model->l;
+        outfile.write((char*) &n_sv, sizeof(int));
+        // write support vectors
+        for (int i = 0; i < n_sv; i ++) {
+            float *sv = model->SV[i];
+            outfile.write((char*) sv, DIM_S * sizeof(float));
+        }
+        // write coefficients
+        for (int i = 0; i < n_sv; i ++) {
+            float coef = model->sv_coef[0][i];
+            outfile.write((char*) &coef, sizeof(float));
+        }
+        // write intercept
+        float intercept = model->rho[0];
+        outfile.write((char*) &intercept, sizeof(float));
+    } catch (const std::ios_base::failure& e) {
+        std::cerr << "\nError: failed to write svm model to " << filename << '\n';
+        return false;
     }
-    // write coefficients
-    for (int i = 0; i < n_sv; i ++) {
-        double coef = model->sv_coef[0][i];
-        outfile.write((char*) &coef, sizeof(double));
+    return true;
+}
+
+bool bio_io::write_model(
+    float *params, int max_alter,
+    float pFU, float pFD,
+    const std::string &filename
+) {
+    std::ofstream outfile(filename, std::ios::binary);
+    if (!outfile.is_open()) {
+        std::cerr << "\nError: failed to open " << filename << '\n';
+        return false;
     }
-    // write intercept
-    double intercept = model->rho[0];
-    outfile.write((char*) &intercept, sizeof(double));
+    try {
+        outfile.write((char*) params, TIS_S * sizeof(float));
+        outfile.write((char*) &max_alter, sizeof(int));
+        outfile.write((char*) &pFU, sizeof(float));
+        outfile.write((char*) &pFD, sizeof(float));
+    } catch (const std::ios_base::failure& e) {
+        std::cerr << "\nError: failed to write TriTISA+ model to " << filename << '\n';
+        return false;
+    }
     return true;
 }
 
 bool bio_io::read_model(
     svm_model *model,
-    double *mins, 
-    double *maxs,
+    float *mins, float *maxs,
     const std::string &filename
 ) {
     std::ifstream infile(filename, std::ios::binary);
     if (!infile.is_open()) {
-        std::cerr << "\nError: failed to open " << filename << std::endl;
+        std::cerr << "\nError: failed to open " << filename << '\n';
         return false;
     }
-    // copy model parameters
-    model->param = param;
-    // read scaler
-    infile.read((char *) mins, DIM_S * sizeof(double));
-    infile.read((char *) maxs, DIM_S * sizeof(double));
-    // read gamma
-    double gamma;
-    infile.read((char*) &gamma, sizeof(double));
-    model->param.gamma = gamma;
-    // read number of support vectors
-    int n_sv;
-    infile.read((char*) &n_sv, sizeof(int));
-    model->l = n_sv;
-    // read support vectors
-    double *sv_cache = NEW double[n_sv * DIM_S];
-    if (!sv_cache) return false;
-    infile.read((char*) sv_cache, n_sv * DIM_S * sizeof(double));
-    model->SV = NEW double*[n_sv];
-    if (!model->SV) return false;
-    for (int i = 0; i < n_sv; i ++) {
-        model->SV[i] = sv_cache + i * DIM_S;
+    try {
+        // read scaler
+        infile.read((char *) mins, DIM_S * sizeof(float));
+        infile.read((char *) maxs, DIM_S * sizeof(float));
+        // read gamma
+        float gamma;
+        infile.read((char*) &gamma, sizeof(float));
+        model->param.gamma = gamma;
+        // read number of support vectors
+        int n_sv;
+        infile.read((char*) &n_sv, sizeof(int));
+        model->l = n_sv;
+        // read support vectors
+        float *sv_cache = NEW float[n_sv * DIM_S];
+        if (!sv_cache) return false;
+        infile.read((char*) sv_cache, n_sv * DIM_S * sizeof(float));
+        model->SV = NEW float*[n_sv];
+        if (!model->SV) return false;
+        for (int i = 0; i < n_sv; i ++) {
+            model->SV[i] = sv_cache + i * DIM_S;
+        }
+        // read coefficients
+        model->sv_coef = NEW float*[1];
+        model->sv_coef[0] = NEW float[n_sv];
+        if (!model->sv_coef[0]) return false;
+        infile.read((char*) model->sv_coef[0], n_sv * sizeof(float));
+        // read intercept
+        model->rho = NEW float[1];
+        infile.read((char*) &model->rho[0], sizeof(float));
+    } catch (const std::ios_base::failure& e) {
+        std::cerr << "\nError: failed to read svm model from " << filename << '\n';
+        return false;
     }
-    // read coefficients
-    model->sv_coef = NEW double*[1];
-    model->sv_coef[0] = NEW double[n_sv];
-    if (!model->sv_coef[0]) return false;
-    infile.read((char*) model->sv_coef[0], n_sv * sizeof(double));
-    // read intercept
-    model->rho = NEW double[1];
-    infile.read((char*) &model->rho[0], sizeof(double));
     return model;
+}
+
+bool bio_io::read_model(
+    float *params, int &max_alter,
+    float &pFU, float &pFD,
+    const std::string &filename
+) {
+    std::ifstream infile(filename, std::ios::binary);
+    if (!infile.is_open()) {
+        std::cerr << "\nError: failed to open " << filename << '\n';
+        return false;
+    }
+    try {
+        infile.read((char*) params, TIS_S * sizeof(float));
+        infile.read((char*) &max_alter, sizeof(int));
+        infile.read((char*) &pFU, sizeof(float));
+        infile.read((char*) &pFD, sizeof(float));
+    } catch (const std::ios_base::failure& e) {
+        std::cerr << "\nError: failed to read TriTISA+ model from " << filename << '\n';
+        return false;
+    }
+    return true;
 }
 
 bool bio_io::write_overprint(
@@ -416,7 +483,7 @@ bool bio_io::write_overprint(
 ) {
     std::ofstream handle(filename);
     if (!handle.is_open()) {
-        std::cerr << "\nError: failed to open " << filename << std::endl;
+        std::cerr << "\nError: failed to open " << filename << '\n';
         return false;
     }
     handle << "##gff-version 3\n";

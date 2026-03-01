@@ -5,63 +5,30 @@ extern "C" {
     extern const unsigned char _binary_meta_bin_start[];
     extern const unsigned char _binary_meta_bin_end[];
 }
-/* epsilon value for floating point comparisons. */
-#define EPSILON 1E-12
 // Minimum set size for SVM training.
 static const int MIN_SET_SIZE = 5;
-/* SVM parameters. */
+
 svm_parameter param = {
-    C_SVC,   /* svm_type     */
-    RBF   ,  /* kernel_type  */
-    3,       /* degree       */
-    1/DIM_S, /* gamma        */
-    0.0,     /* coef0        */
-    200,     /* cache_size   */
-    1e-3,    /* eps          */
-    100.0,   /* C            */
-    0,       /* nr_weight    */
-    nullptr, /* weight_label */
-    nullptr, /* weight       */
-    0.0,     /* nu           */
-    0.0,     /* p            */
-    true,    /* shrinking    */
-    false    /* probability  */
+    C_SVC,    /* svm_type     */
+    RBF,      /* kernel_type  */
+    3,        /* degree       */
+    1.0/DIM_S,/* gamma        */
+    0.0,      /* coef0        */
+    200,      /* cache_size   */
+    1e-3,     /* eps          */
+    100.0,    /* C            */
+    0,        /* nr_weight    */
+    nullptr,  /* weight_label */
+    nullptr,  /* weight       */
+    0.0,      /* nu           */
+    0.0,      /* p            */
+    true,     /* shrinking    */
+    false     /* probability  */
 };
+
+float W = 1.0F;
 /* Model parameters. */
 const float *MODELS[N_MODELS];
-/**
- * @brief           Calculate dot product of two vectors using AVX instructions.
- * @param x         The first vector.
- * @param y         The second vector.
- * @param dim       The dimension of the vectors.
- * @return          The dot product of the two vectors.
- */
-inline double dot_df_avx(const double* x, const float* y, const int dim) {
-#ifdef __AVX__
-    // ---- AVX version ----
-    __m256d sum_vec = _mm256_setzero_pd();
-    int d = 0;
-    for (; d + 4 <= dim; d += 4) {
-        __m256d xv = _mm256_loadu_pd(x + d);
-        __m128  yf = _mm_loadu_ps(y + d);
-        __m256d yv = _mm256_cvtps_pd(yf);
-        __m256d prod = _mm256_mul_pd(xv, yv);
-        sum_vec = _mm256_add_pd(sum_vec, prod);
-    }
-    double buf[4];
-    _mm256_storeu_pd(buf, sum_vec);
-    double sum = buf[0] + buf[1] + buf[2] + buf[3];
-    for (; d < dim; ++d)
-        sum += x[d] * y[d];
-    return sum;
-#else
-    // ---- Non-AVX fallback ----
-    double sum = 0.0;
-    for (int d = 0; d < dim; ++d)
-        sum += x[d] * y[d];
-    return sum;
-#endif
-}
 /** 
  * @brief           Calculate dot product of two vectors using AVX instructions.
  * @param x         The first vector.
@@ -69,53 +36,40 @@ inline double dot_df_avx(const double* x, const float* y, const int dim) {
  * @param dim       The dimension of the vectors.
  * @return          The dot product of the two vectors.
  */
-inline double dot_dd_avx(const double *x, const double *y, int dim)
-{
+inline float dot_ff_avx(const float *x, const float *y, int dim) {
 #ifdef __AVX__
-    __m256d sum = _mm256_setzero_pd();
+    __m256 sum = _mm256_setzero_ps();
     int i = 0;
 
-    #ifdef __FMA__
-    for (; i + 3 < dim; i += 4) {
-        __m256d vx = _mm256_loadu_pd(x + i);
-        __m256d vy = _mm256_loadu_pd(y + i);
-        sum = _mm256_fmadd_pd(vx, vy, sum);
+#ifdef __FMA__
+    for (; i + 7 < dim; i += 8) {
+        __m256 vx = _mm256_loadu_ps(x + i);
+        __m256 vy = _mm256_loadu_ps(y + i);
+        sum = _mm256_fmadd_ps(vx, vy, sum);
     }
-    #else
-
-    for (; i + 3 < dim; i += 4) {
-        __m256d vx = _mm256_loadu_pd(x + i);
-        __m256d vy = _mm256_loadu_pd(y + i);
-        sum = _mm256_add_pd(sum, _mm256_mul_pd(vx, vy));
+#else
+    for (; i + 7 < dim; i += 8) {
+        __m256 vx = _mm256_loadu_ps(x + i);
+        __m256 vy = _mm256_loadu_ps(y + i);
+        sum = _mm256_add_ps(sum, _mm256_mul_ps(vx, vy));
     }
-    #endif
-
-    __m128d lo = _mm256_castpd256_pd128(sum);
-    __m128d hi = _mm256_extractf128_pd(sum, 1);
-    __m128d s2 = _mm_add_pd(lo, hi);
-    double result = _mm_cvtsd_f64(_mm_add_pd(s2, _mm_unpackhi_pd(s2, s2)));
+#endif
+    __m128 lo = _mm256_castps256_ps128(sum);
+    __m128 hi = _mm256_extractf128_ps(sum, 1);
+    __m128 s2 = _mm_add_ps(lo, hi);
+    s2 = _mm_add_ps(s2, _mm_movehl_ps(s2, s2));
+    s2 = _mm_add_ss(s2, _mm_shuffle_ps(s2, s2, 1));
+    float result = _mm_cvtss_f32(s2);
     for (; i < dim; ++i)
         result += x[i] * y[i];
 
     return result;
-
 #else
-    double result = 0.0;
+    float result = 0.0f;
     for (int i = 0; i < dim; ++i)
         result += x[i] * y[i];
     return result;
-
 #endif
-}
-/** 
- * @brief           Normalize a vector to unit length.
- * @param v         The vector to be normalized.
- * @param n         The dimension of the vector.
- */
-static void normalize(double *v, int n) {
-    double norm = std::sqrt(dot_dd_avx(v, v, n));
-    if (norm < EPSILON) return;
-    for (int i = 0; i < n; ++i) v[i] /= norm;
 }
 
 bool model::init_models() {
@@ -137,57 +91,12 @@ bool model::init_models() {
     return true;
 }
 
-double *model::build_rbs_data(
-    pch_array &flankings,
-    svm_model* cds_model,
-    double *params,
-    bio::region *rbs_region,
-    int plot_range,
-    flt_array &exp_lens
-) {
-    static int dim = 7;
-    int rbs_len = rbs_region ? (rbs_region->end-rbs_region->start) : 0;
-    int n_alters = (int) flankings.size();
-    double *rbs_data = NEW double[n_alters*dim]();
-    int start_idx = plot_range / 2;
-    if (rbs_data == nullptr) return nullptr;
-# ifdef _OPENMP
-    #pragma omp parallel for schedule(guided)
-# endif
-    for (int i = 0; i < n_alters; i ++) {
-        if (cds_model) {
-            double *p_params = params + i*DIM_S;
-            double *q_params = params + (i + n_alters)*DIM_S;
-            rbs_data[i*dim+0] = svm_predict_score(cds_model, p_params, DIM_S);
-            rbs_data[i*dim+1] = svm_predict_score(cds_model, q_params, DIM_S);
-        }
-        double *curve = NEW double[plot_range*3]();
-        if (curve != nullptr) {
-            encoding::z_curve(flankings[i], plot_range, curve);
-            rbs_data[i*dim+2] = encoding::get_slope(curve+0*plot_range+rbs_region->start, rbs_len);
-            rbs_data[i*dim+3] = encoding::get_slope(curve+1*plot_range+rbs_region->start, rbs_len);
-            rbs_data[i*dim+4] = encoding::get_slope(curve+2*plot_range+rbs_region->start, rbs_len);
-            delete[] curve;
-        }
-        char start_codon = flankings[i][start_idx];
-        if (start_codon == 'A') {
-            rbs_data[i*dim+5] = 0.6;
-        } else if (start_codon == 'G') {
-            rbs_data[i*dim+5] = 0.3;
-        } else {
-            rbs_data[i*dim+5] = 0.1;
-        }
-        rbs_data[i*dim+6] = exp_lens[i];
-    }
-    return rbs_data;
-}
-
-void model::mlp_predict(int index, double *data, int size, double *probas) {
-    static double tmp = 2.0;
+void model::mlp_predict(int index, float *data, int size, float *probas) {
+    static float tmp = 2.0;
     if (!size) return;
     /* scale data */
     const float *means = MODELS[index], *stds = means + DIM_S;
-    double *scaled = encoding::std_scale(data, size, DIM_S, means, stds);
+    float *scaled = encoding::std_scale(data, size, DIM_S, means, stds);
     if (!scaled) return;
     /* mlp process */
     const float *model = stds + DIM_S; // first hidden w
@@ -197,180 +106,48 @@ void model::mlp_predict(int index, double *data, int size, double *probas) {
     #pragma omp parallel for
 #endif
     for (int i = 0; i < size; i ++) {
-        double *x = scaled + i*DIM_S;
+        float *x = scaled + i*DIM_S;
         // Hidden Layer (765, ) -> (200, )
-        double hid_out[N_HIDDEN] = {0.0};
+        float hid_out[N_HIDDEN] = {0.0};
         for (int j = 0; j < N_HIDDEN; j ++) {
             const float *hid_w = model + j*DIM_S;
             // hid_out = hid_w * x + hid_b
-            hid_out[j] = dot_df_avx(x, hid_w, DIM_S);
+            hid_out[j] = dot_ff_avx(x, hid_w, DIM_S);
             // ReLU activation function
-            hid_out[j] = std::max(0.0, hid_out[j]+(double)hid_bs[j]);
+            hid_out[j] = std::max(0.0F, hid_out[j]+(float)hid_bs[j]);
         }
         // Output Layer (200, ) -> (1, )
-        double out_b = (double)model[N_PARAMS-1];
+        float out_b = (float)model[N_PARAMS-1];
         // out = out_w * hid_out + out_b
-        probas[i] = (dot_df_avx(hid_out, out_ws, N_HIDDEN) + out_b) / tmp;
+        probas[i] = (dot_ff_avx(hid_out, out_ws, N_HIDDEN) + out_b) / tmp;
         // Sigmoid activation function
         probas[i] = 1.0/(1.0 + std::exp(-(probas[i])));
     }
     delete[] scaled;
 }
 
-
-bool model::fisher_train(double **data, int size, int dim, int *labels, double *coef) {
-    const double lambda = 1e-8;
-    if (!data || !labels || !coef || size <= 1 || dim <= 0)
-        return false;
-
-    // ---------- 1. compute class means ----------
-    double *mu_pos = new double[dim]();
-    double *mu_neg = new double[dim]();
-    int n_pos = 0, n_neg = 0;
-
-    for (int i = 0; i < size; ++i) {
-        const double *x = data[i];
-        if (labels[i] > 0) {
-            for (int j = 0; j < dim; ++j)
-                mu_pos[j] += x[j];
-            ++n_pos;
-        } else if (labels[i] < 0) {
-            for (int j = 0; j < dim; ++j)
-                mu_neg[j] += x[j];
-            ++n_neg;
-        }
-    }
-
-    if (n_pos == 0 || n_neg == 0)
-        return false;
-
-    for (int j = 0; j < dim; ++j) {
-        mu_pos[j] /= n_pos;
-        mu_neg[j] /= n_neg;
-    }
-
-    // ---------- 2. compute Sw ----------
-    double *Sw = new double[dim * dim]();
-    double *diff = new double[dim];
-
-    for (int i = 0; i < size; ++i) {
-        const double *x = data[i];
-        const double *mu = (labels[i] > 0) ? mu_pos : mu_neg;
-
-        for (int j = 0; j < dim; ++j)
-            diff[j] = x[j] - mu[j];
-
-        // Sw += diff * diff^T
-        for (int r = 0; r < dim; ++r) {
-            double dr = diff[r];
-            double *row = Sw + r * dim;
-            for (int c = 0; c < dim; ++c)
-                row[c] += dr * diff[c];
-        }
-    }
-
-    for (int i = 0; i < dim; ++i)
-        Sw[i * dim + i] += lambda;
-
-    // ---------- 3. mean difference ----------
-    double *bvec = new double[dim];
-    for (int i = 0; i < dim; ++i)
-        bvec[i] = mu_pos[i] - mu_neg[i];
-
-    // ---------- 4. solve Sw * w = bvec (Gaussian elimination) ----------
-    // augmented matrix
-    double *A = new double[dim * (dim + 1)];
-    for (int i = 0; i < dim; ++i) {
-        std::memcpy(A + i * (dim + 1), Sw + i * dim, dim * sizeof(double));
-        A[i * (dim + 1) + dim] = bvec[i];
-    }
-
-    // Gaussian elimination
-    for (int i = 0; i < dim; ++i) {
-        double pivot = A[i * (dim + 1) + i];
-        if (std::fabs(pivot) < EPSILON) pivot = (pivot >= 0 ? 1 : -1) * EPSILON;
-
-        for (int j = i; j < dim + 1; ++j)
-            A[i * (dim + 1) + j] /= pivot;
-
-        for (int k = 0; k < dim; ++k) {
-            if (k == i) continue;
-            double factor = A[k * (dim + 1) + i];
-            for (int j = i; j < dim + 1; ++j)
-                A[k * (dim + 1) + j] -= factor * A[i * (dim + 1) + j];
-        }
-    }
-
-    // solution w
-    double *w = new double[dim];
-    for (int i = 0; i < dim; ++i)
-        w[i] = A[i * (dim + 1) + dim];
-
-    // ---------- 5. bias ----------
-    // b = -0.5 * w · (mu_pos + mu_neg)
-    double *mu_sum = new double[dim];
-    for (int i = 0; i < dim; ++i)
-        mu_sum[i] = mu_pos[i] + mu_neg[i];
-
-    double bias = -0.5 * dot_dd_avx(w, mu_sum, dim);
-
-    // ---------- 6. normalization ----------
-    // ||(w,b)|| = 1
-    double norm2 = dot_dd_avx(w, w, dim) + bias * bias;
-    double norm = std::sqrt(norm2);
-
-    if (norm <= EPSILON)
-        return false;
-
-    for (int i = 0; i < dim; ++i)
-        coef[i] = w[i] / norm;
-    coef[dim] = bias / norm;
-
-    // ---------- cleanup ----------
-    delete[] mu_pos;
-    delete[] mu_neg;
-    delete[] Sw;
-    delete[] diff;
-    delete[] bvec;
-    delete[] A;
-    delete[] w;
-    delete[] mu_sum;
-
-    return true;
-}
-
-void model::fisher_predict(double *data, int size, int dim, double *coef, double *scores) {
-    if (!scores) return;
-
-    for (int i = 0; i < size; ++i) {
-        const double *x = data + i * dim;
-        double score = dot_dd_avx(x, coef, dim) + coef[dim];
-        scores[i] = score;
-    }
-}
-
-svm_model* model::rbf_train(double *params, int size, int dim, 
-                 double *i_scores, double *mins, double *maxs) {
+svm_model* model::rbf_train(float *params, int size, int dim, 
+                  float *i_scores, float *mins, float *maxs) {
     svm_problem prob;
     for (int j = 0; j < dim; ++j) {
-        mins[j] =  std::numeric_limits<double>::infinity();
-        maxs[j] = -std::numeric_limits<double>::infinity();
+        mins[j] =  std::numeric_limits<float>::infinity();
+        maxs[j] = -std::numeric_limits<float>::infinity();
     }
 
     // split data into training set
     int n_pos = 0, n_neg = 0;
     std::vector<int> train_indices;
-    prob.y = NEW double[size];
+    prob.y = NEW float[size];
     if (prob.y == nullptr) return nullptr;
     prob.l = 0;
     for (int i = 0; i < size; ++i) {
-        double s = i_scores[i];
+        float s = i_scores[i];
         if (s > UP_PROBA || (s < 0.05 && s > 1E-6)) {
-            double* row = params + i*dim;
+            float* row = params + i*dim;
             train_indices.push_back(i);
 
             for (int j = 0; j < dim; ++j) {
-                double v = row[j];
+                float v = row[j];
                 if (v < mins[j]) mins[j] = v;
                 if (v > maxs[j]) maxs[j] = v;
             }
@@ -379,45 +156,48 @@ svm_model* model::rbf_train(double *params, int size, int dim,
             ++prob.l;
         }
     }
+    if ((float)n_neg/n_pos>=10) W = 1.25-0.108*std::log((float)n_neg/n_pos);
 
-    if (n_pos < MIN_SET_SIZE || n_neg < MIN_SET_SIZE) return nullptr; 
+    if (n_pos < MIN_SET_SIZE || n_neg < MIN_SET_SIZE || n_neg / n_pos > 75) {
+        return nullptr; 
+    }
 
     // preprocess data (scale data to [0, 1])
     for (int j = 0; j < dim; ++j) {
-        double intv = maxs[j] - mins[j];
+        float intv = maxs[j] - mins[j];
         if (intv < EPSILON) {
             for (int i = 0; i < size; ++i)
                 params[i*dim + j] = 0.0;
         } else {
-            double inv_intv = 1.0 / intv;
-            double minv = mins[j];
+            float inv_intv = 1.0 / intv;
+            float minv = mins[j];
 
             for (int i = 0; i < size; ++i) {
-                double* row = params + i*dim;
+                float* row = params + i*dim;
                 row[j] = (row[j] - minv) * inv_intv;
             }
         }
     }
 
     // calculate gamma
-    double sum = 0.0;
-    double sqsum = 0.0;
+    float sum = 0.0;
+    float sqsum = 0.0;
     const int total = prob.l * dim;
     for (int i = 0; i < prob.l; ++i) {
-        double* row = params + train_indices[i]*dim;
+        float* row = params + train_indices[i]*dim;
         for (int j = 0; j < dim; ++j) {
-            double v = row[j];
+            float v = row[j];
             sum += v;
             sqsum += v * v;
         }
     }
-    double mean = sum / total;
-    double mean_sq = mean * mean;
-    double var = (sqsum / total) - mean_sq;
+    float mean = sum / total;
+    float mean_sq = mean * mean;
+    float var = (sqsum / total) - mean_sq;
     if (var <= 0) var = EPSILON;
     param.gamma = 0.5 / (dim * var);
     // train svm model
-    prob.x = NEW double *[prob.l];
+    prob.x = NEW float *[prob.l];
     if (prob.x == nullptr) return nullptr;
     for (int i = 0; i < prob.l; i ++)
         prob.x[i] = params + train_indices[i]*dim;
@@ -426,4 +206,162 @@ svm_model* model::rbf_train(double *params, int size, int dim,
     delete[] prob.x;
     delete[] prob.y;
     return model;
+}
+/**
+ * @brief   calculate the offset of a counter in the profile matrix.
+ * 
+ * @param order     The order of the counter.
+ * @param ps        The pointer to the sequence.
+ * @return int      The offset of the counter.
+ */
+inline int counter_offset(int order, char *ps) {
+    int ctr_off = 0;
+    for (int p = 0; p <= order; p ++) {
+        if (!base2off.count(ps[p])) {
+            ctr_off = -1;
+            break;
+        }
+        ctr_off += (1<<(2*(order-p))) * base2off[ps[p]];
+    }
+    return ctr_off;
+}
+/**
+ * @brief   update the counter in the profile matrix.
+ * 
+ * @param order     The order of the counter.
+ * @param ps        The pointer to the sequence.
+ * @param pm        The pointer to the profile matrix.
+ * @param bkg       The pointer to the background counter.
+ */
+static void update_counter(int order, char *ps, float *pm, float *bkg) {
+    for (int j = 0; j < (65 - order); j ++) {
+        int ctr_off = counter_offset(order, ps+j);
+        if (ctr_off >= 0) pm[j*64+ctr_off] ++;
+        if (bkg && base2off.count(ps[j])) 
+            bkg[base2off[ps[j]]] ++;
+    }
+}
+/**
+ * @brief   normalize and log the profile matrix.
+ * 
+ * @param order     The order of the counter.
+ * @param pm        The pointer to the profile matrix.
+ * @param nrows     The number of rows in the profile matrix.
+ */
+static void norm_log(int order, float *pm, int nrows) {
+    int ncols = 1 << (2*(order+1));
+    for (int i = 0; i < nrows; i ++) {
+        float *prow = pm + i*64;
+        for (int j = 0; j < ncols; j += 4) {
+            float sum = prow[j+0] + prow[j+1] + prow[j+2] + prow[j+3];
+            if (sum > 0.0F) {
+                prow[j+0] = std::log(prow[j+0]/sum);
+                prow[j+1] = std::log(prow[j+1]/sum);
+                prow[j+2] = std::log(prow[j+2]/sum);
+                prow[j+3] = std::log(prow[j+3]/sum);
+            }
+        }
+    }
+}
+
+bool model::mm_train(
+    bio::orf_array &orfs, int order, float *params, str_array &starts, 
+    int table, float &pFU, float &pFD, int &max_alter
+) {
+    float bkg[4] = { 0.0F };
+    std::fill_n(params, TIS_S, 1.0F);
+    for (int i = 0; i < orfs.size(); i ++) {
+        // only sampling from long orfs
+        if (orfs[i].len < 300) continue;
+        int tsp = orfs[i].t_start, h_len = orfs[i].host_len;
+        char *pstr = orfs[i].pstr;
+        for (int is = 0; is < std::min((int)orfs[i].starts.size(), 3); is ++) {
+            // sampling putative true and downstream false
+            float *pm = params + TIS_S/3;
+            int sp = orfs[i].starts[is];
+            if (sp < tsp || sp+15 > h_len || sp-50 < 0) continue;
+            else if (sp == tsp) pm = params;
+            update_counter(order, pstr+(sp-tsp)-50, pm, nullptr);
+        }
+        // sampling upstream false, regardless of frame
+        float *pm = params + TIS_S/3*2;
+        int is = std::max(50,tsp-90), end = std::min(tsp-3, h_len-15);
+        while (is < end) {
+            char *ps = pstr + (is - tsp);
+            if (bio_util::match_codon(ps, starts))
+                update_counter(order, ps-50, pm, bkg);
+            is += 1;
+        }
+    }
+    // normalize PWM
+    for (int i = 0; i < 3; i ++)
+        norm_log(order, params+i*TIS_S/3, 65);
+    float C = bkg[0] + bkg[1] + bkg[2] + bkg[3];
+    if (C > 0.0F) for (int i = 0; i < 4; i ++) bkg[i] /= C;
+
+    float a = bkg[0], c = bkg[1], g = bkg[2], t = bkg[3];
+    float s = a*t*g;
+    // support for standard
+    if (table != 1) s += g*t*g+t*t*g;
+    float e = t*a*g+t*a*a;
+    // support for mycoplasma
+    if (table != 4) e += t*g*a;
+    float p = s / (s + e), qpi = e / (s + e), P = 0.0F;
+
+    pFU = 0, max_alter = 0;
+    int i = 0;
+    while (true) {
+        P += qpi;
+        if (P > 0.99) {
+			max_alter = i + 1;
+			break;
+		}
+        pFU += i * qpi;
+        qpi *= p;
+        i++;
+    }
+    pFD = max_alter - 1 - pFU;
+    return true;
+}
+
+float model::mm_revise(
+    bio::orf_array &orfs, int order, float *params,
+    float &pFU, float &pFD, int &max_alter
+) {
+    float *tT = params, *dF = params + TIS_S/3, *uF = params + TIS_S/3*2;
+    int n_orfs = orfs.size(), unc = 0;
+#ifdef _OPENMP
+    #pragma omp parallel for reduction(+:unc) schedule(static)
+#endif
+    for (int i = 0; i < n_orfs; i ++) {
+        int tsp = orfs[i].t_start, n_alter = orfs[i].starts.size();
+        float max_score = 0.0F;
+        char *pstr = orfs[i].pstr;
+        for (int is = 0; is < std::min(n_alter, max_alter); is ++) {
+            int sp = orfs[i].starts[is], h_len = orfs[i].host_len;
+            if (sp+15 > h_len || sp-50 < 0) continue;
+            char *ps = pstr + (sp - tsp) - 50;
+
+            float t = 0.0F, d = 0.0F, u = 0.0F;
+            for(int j = 0; j < 65-order; ++j){
+                int ctr_off = counter_offset(order, ps+j);
+                if (ctr_off >= 0) {
+                    t += tT[j*64+ctr_off];
+                    d += dF[j*64+ctr_off];
+                    u += uF[j*64+ctr_off];
+                }
+            }
+
+            float score = 1.0F / (1 + std::exp(d-t) * pFD + std::exp(u-t) * pFU);
+            if (score > max_score) {
+                orfs[i].t_start = orfs[i].starts[is];
+                max_score = score;
+            }
+        }
+        orfs[i].pstr = pstr + orfs[i].t_start - tsp;
+        orfs[i].seq += orfs[i].t_start - tsp;
+        orfs[i].len -= orfs[i].t_start - tsp;
+        if (orfs[i].pstr == pstr) unc ++;
+    }
+    return (float) unc / n_orfs;
 }
