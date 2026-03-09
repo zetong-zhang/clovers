@@ -10,8 +10,9 @@
  *   @contact:   ylin@tju.edu.cn | fgao@tju.edu.cn         *
  *                                                         *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-
+#ifdef _OPENMP
 #include <omp.h>
+#endif
 #include <chrono>
 #include <sys/stat.h>
 
@@ -146,10 +147,12 @@ int main(int argc, char *argv[]) {
     if (!QUIET) std::cerr << "Program Start Time: " << std::setw(29) << oss.str() << '\n';
 
     /* set the number of cpus for multi-thread process (openmp) */
+    #ifdef _OPENMP
     auto num_threads = args.count("threads") ? 
     args["threads"].as<uint32_t>() : omp_get_max_threads();
     omp_set_num_threads(num_threads);
     if (!QUIET) std::cerr << "Threads Used:" << std::setw(36) << num_threads << '\n';
+    #endif
     
     /* initialize translation table and start/stop codon list */
     uint32_t table = args["table"].as<uint32_t>();

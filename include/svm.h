@@ -5,6 +5,10 @@
 #include <immintrin.h>
 #endif
 
+#if defined(_OPENMP)
+#include <omp.h>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif

@@ -11,7 +11,10 @@
 #ifndef ENCODING
 #define ENCODING
 
+#ifdef _OPENMP
 #include <omp.h>
+#endif
+
 #include <cfloat>
 #include <cmath>
 #include <assert.h>

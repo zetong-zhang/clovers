@@ -10,3 +10,4 @@ All notable changes to this project will be documented in this file.
 - Fixed the bug that overprinted genes cannot be detected at the boundaries of the circular genomes;
 - Fixed the incorrect example format in the README file;
 - Fixed the issue where svm.h could not be compiled on machines without AVX support.
+- Fixed compilation issues on machines without OpenMP support.
