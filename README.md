@@ -1,6 +1,9 @@
 # CLOVERS
+<br/>
 
 ![LOGO](logo.png)
+
+<br/>
 
 ![C++](https://img.shields.io/badge/language-C%2B%2B-blue)
 ![Bioinformatics](https://img.shields.io/badge/field-bioinformatics-brightgreen)
@@ -172,8 +175,7 @@ Or minimal GenBank format input (stdout or file) or their compressed versions (g
 LOCUS       NC_000913.3
 DEFINITION  NC_000913.3
 FEATURES             Location/Qualifiers
-ORIGIN
-ORIGIN      
+ORIGIN   
         1 agcttttcat tctgactgca acgggcaata tgtctctgtg tggattaaaa aaagagtgtc
        61 tgatagcagc ttctgaactg gttacctgcc gtgagtaaat taaaatttta ttgacttagg
       121 tcactaaata ctttaaccaa tataggcata gcgcacagac agataaaaat tacagagtac
@@ -201,6 +203,8 @@ ORIGIN
         CDS             2801..3733
                         /note="version=CLOVERS_v1.0.0;ID=orf000002;score=0.968"
     . . .
+    ORIGIN
+    //
     ```
     **MED File Example:**
     ```
@@ -233,6 +237,7 @@ ORIGIN
     GGCTTCCGGCAGGCGCGGCAGGCGGTCGCGGAAATCGGCGCGGTAGCGAGCGGTATCTCCGGCTCCGGCCCGACCTTGTT
     CGCTCTGTGTGACAAGCCGGAAACCGCCCAGCGCGTTGCCGACTGGTTGGGTAAGAACTACCTGCAAAATCAGGAAGGTT
     TTGTTCATATTTGCCGGCTGGATACGGCGGGCGCACGAGTACTGGAAAACTAA
+    . . .
     ```
 
 ## Structure

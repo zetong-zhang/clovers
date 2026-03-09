@@ -119,13 +119,13 @@ int main(int argc, char *argv[]) {
 
     /* show help information and exit with code 0 */
     if (argc <= 1 || args.count("help")) {
-        std::cerr << "- - - - - - - - - - - - - - - - - - - - - - - - -\n"
-                  << "PROTEIN-CODING GENE RECOGNITION SYSTEM OF CLOVERS\n\n"
-                  << "Copyright: (C) 2003-2026 TUBIC,Tianjin University\n"
-                  << "Authors:   Zetong Zhang, Yan Lin, Feng Gao       \n"
-                  << "Date:      November 30, 2025                     \n"
-                  << "Contact:   ylin@tju.edu.cn | fgao@tju.edu.cn     \n"
-                  << "- - - - - - - - - - - - - - - - - - - - - - - - -"
+        std::cerr << "- - - - - - - - - - - - - - - - - - - - - - - - - - - -\n"
+                  << "PROTEIN-CODING GENE RECOGNITION SYSTEM OF CLOVERS 1.0.1\n\n"
+                  << "Copyright:  (C) 2003-2026 TUBIC,Tianjin University     \n"
+                  << "Authors:    Zetong Zhang, Yan Lin*, Feng Gao*          \n"
+                  << "Date:       November 30, 2025                          \n"
+                  << "Contact:    ylin@tju.edu.cn | fgao@tju.edu.cn          \n"
+                  << "- - - - - - - - - - - - - - - - - - - - - - - - - - - -"
                   << options.help() << "\nExample: " << exe_name << ' '
                   << "-i example.fa -o example.gff -c -f gff               \n";
         if (argc <= 1) {
@@ -344,7 +344,7 @@ int main(int argc, char *argv[]) {
                 }
             }
         }
-        if (params == nullptr && n_seeds >= 10) {
+        if (params == nullptr && n_seeds >= MIN_MARKOV_SET) {
             params = NEW float[TIS_S];
             if (params == nullptr) {
                 std::cerr << MEM_ERR_INFO << '\n';
@@ -363,7 +363,10 @@ int main(int argc, char *argv[]) {
             }
         } else if (params != nullptr) {
             model::mm_revise(putative, 2, params, pFU, pFD, max_alter);
-        } else if (!QUIET) std::cerr << "\rRevising TIS Model ..." << std::setw(27) << "Skipped";
+        } else {
+            model::mm_revise(putative, 2, tis_params, 0.855970, 5.144030, 7);
+            if (!QUIET) std::cerr << "\rRevising TIS Model ..." << std::setw(27) << "Skipped";
+        }
         if (params && !model_file.empty()) {
             bio_io::write_model(params, max_alter, pFU, pFD, model_file);
         }

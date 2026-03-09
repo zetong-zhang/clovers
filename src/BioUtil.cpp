@@ -123,9 +123,13 @@ static int refine_start(int_array &start_locs, int_array &start_types) {
 
 op_type bio_util::check_overprint(const bio::orf &a, const bio::orf &b, float ratio) {
     if (!strcmp(a.host, b.host) && a.strand == b.strand) {
+        int a_end = a.end, b_end = b.end;
+        // 我是德布罗意的六世徒孙
+        if (a_end < a.t_start) a_end += a.host_len;
+        if (b_end < b.t_start) b_end += b.host_len;
         int olen = 0;
-        if (a.end > b.t_start && b.end > a.t_start)
-            olen = std::min(a.end, b.end) - std::max(a.t_start, b.t_start);
+        if (a_end > b.t_start && b_end > a.t_start)
+            olen = std::min(a_end, b_end) - std::max(a.t_start, b.t_start);
         if (olen == a.len || olen == b.len) 
             return op_type::INCLUDE;
         else if ((olen / (float)std::min(a.len, b.len)) >= ratio) 

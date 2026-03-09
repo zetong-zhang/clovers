@@ -2,8 +2,9 @@
  * @brief       Model functions for Z-curve.
  * 
  * @author      Zetong Zhang, Yan Lin, Feng Gao
- * @version     1.0.0
+ * @version     1.0.1
  * @date        2025-11-30
+ * @modified    2026-03-09
  * @license     GNU GPLv3
  * @contact     ylin@tju.edu.cn | fgao@tju.edu.cn
  */
@@ -31,8 +32,12 @@
 #include "BioUtil.hpp"
 #include "svm.h"
 
-/* SVM params. */
+/* SVM hyper-params. */
 extern svm_parameter param;
+/* pretrained TIS params */
+extern float tis_params[TIS_S];
+/* mininum set size for Markov training */
+const int MIN_MARKOV_SET = 50;
 
 namespace model {
     /**
@@ -78,7 +83,7 @@ namespace model {
      * @return              The rate of unchanged TISs.
      */
     float      mm_revise(bio::orf_array &orfs, int order, float *params,
-                         float &pFU, float &pFD, int &max_alter);
+                         float pFU, float pFD, int max_alter);
 }
 
 extern float W;
