@@ -2,7 +2,7 @@
  * @brief       Bioinformatics data structures. 
  * 
  * @author      Zetong Zhang, Yan Lin, Feng Gao
- * @version     1.0.0
+ * @version     1.0.2
  * @date        2025-11-30
  * @modified    2026-02-28
  * @license     GNU GPLv3
@@ -36,10 +36,10 @@ namespace bio {
         std::string name;            // scaffold name
         std::string sequence;        // scaffold sequence
         char *complement = nullptr;  // complement sequence
-        record(): name("anonymous") {}
-        record(std::string &&name, std::string &&sequence):
+        record() noexcept: name("anonymous") {}
+        record(std::string &&name, std::string &&sequence) noexcept:
         name(std::move(name)), sequence(std::move(sequence)) {}
-        ~record() { delete[] complement; }
+        ~record() noexcept { delete[] complement; }
     } record;
     /*  ORF type */
     typedef struct orf {
@@ -58,9 +58,9 @@ namespace bio {
         float      score=0;         // zcurve score
         bool       partial5=false;  // partial 5'-end
         bool       partial3=false;  // partial 3'-end
-        orf(): host((char*)"anonymous") {}
-        orf(char *host, int host_len, int_array &&starts, int_array &&types, 
-        int end, int t_start, int len, char strand, char *pstr, float gc_frac): seq(pstr),
+        orf() noexcept: host((char*)"anonymous") {}
+        orf(char *host, int host_len, int_array &&starts, int_array &&types, int end, 
+        int t_start, int len, char strand, char *pstr, float gc_frac) noexcept: seq(pstr),
         host(host), host_len(host_len),starts(std::move(starts)),types(std::move(types)), 
         len(len), t_start(t_start),end(end),strand(strand),pstr(pstr),gc_frac(gc_frac){}
     } orf;

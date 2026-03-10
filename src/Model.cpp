@@ -70,7 +70,7 @@ inline float dot_ff_avx(const float *x, const float *y, int dim) {
 #endif
 }
 
-bool model::init_models() {
+bool model::init_models() noexcept {
     const size_t expected_size = N_MODELS * N_PARAMS * sizeof(float);
     const size_t actual_size = _binary_meta_bin_end - _binary_meta_bin_start;
 
@@ -89,7 +89,7 @@ bool model::init_models() {
     return true;
 }
 
-void model::mlp_predict(int index, float *data, int size, float *probas) {
+void model::mlp_predict(int index, float *data, int size, float *probas) noexcept {
     static float tmp = 2.0;
     if (!size) return;
     /* scale data */
@@ -125,7 +125,7 @@ void model::mlp_predict(int index, float *data, int size, float *probas) {
 }
 
 svm_model* model::rbf_train(float *params, int size, int dim, 
-                  float *i_scores, float *mins, float *maxs) {
+                  float *i_scores, float *mins, float *maxs) noexcept {
     svm_problem prob;
     for (int j = 0; j < dim; ++j) {
         mins[j] =  std::numeric_limits<float>::infinity();
@@ -270,7 +270,7 @@ static void norm_log(int order, float *pm, int nrows) {
 bool model::mm_train(
     bio::orf_array &orfs, int order, float *params, str_array &starts, 
     int table, float &pFU, float &pFD, int &max_alter
-) {
+) noexcept {
     float bkg[4] = { 0.0F };
     std::fill_n(params, TIS_S, 1.0F);
     for (int i = 0; i < orfs.size(); i ++) {
@@ -330,7 +330,7 @@ bool model::mm_train(
 float model::mm_revise(
     bio::orf_array &orfs, int order, float *params,
     float pFU, float pFD, int max_alter
-) {
+) noexcept {
     float *tT = params, *dF = params + TIS_S/3, *uF = params + TIS_S/3*2;
     int n_orfs = orfs.size(), unc = 0;
 #ifdef _OPENMP

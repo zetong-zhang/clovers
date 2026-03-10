@@ -2,7 +2,7 @@
  * @brief       Model functions for Z-curve.
  * 
  * @author      Zetong Zhang, Yan Lin, Feng Gao
- * @version     1.0.1
+ * @version     1.0.2
  * @date        2025-11-30
  * @modified    2026-03-09
  * @license     GNU GPLv3
@@ -44,7 +44,7 @@ namespace model {
      * @brief               Initialize the mlp models from embedded source.
      * @return              True if the models are successfully initialized.
      */
-    bool       init_models();
+    bool       init_models() noexcept;
     /**
      * @brief               Predict the output of a mlp model.
      * @param model_id      The index of the mlp model.
@@ -52,7 +52,7 @@ namespace model {
      * @param size          The size of the input data.
      * @param probas        The output probabilities.
      */
-    void       mlp_predict(int index, float *data, int size, float *probas);
+    void       mlp_predict(int index, float *data, int size, float *probas) noexcept;
     /**
      * @brief               Train a SVM model for CDSs.
      * @param params        The SVM parameters.
@@ -63,7 +63,7 @@ namespace model {
      * @return              The model
      */
     svm_model* rbf_train(float *params, int size, int dim, float *init_score, 
-                         float *mins, float *maxs);
+                         float *mins, float *maxs) noexcept;
     /**
      * @brief               Train a Markov model for TISs.
      * @param orfs          The ORFs.
@@ -74,7 +74,7 @@ namespace model {
      * @return              True if the model is successfully trained.
      */
     bool       mm_train (bio::orf_array &orfs, int order, float *params, str_array &starts, 
-                         int table, float &pFU, float &pFD, int &max_alter);
+                         int table, float &pFU, float &pFD, int &max_alter) noexcept;
     /**
      * @brief               Revise the TISs using the Markov model.
      * @param orfs          The ORFs.
@@ -83,7 +83,7 @@ namespace model {
      * @return              The rate of unchanged TISs.
      */
     float      mm_revise(bio::orf_array &orfs, int order, float *params,
-                         float pFU, float pFD, int max_alter);
+                         float pFU, float pFD, int max_alter) noexcept;
 }
 
 extern float W;

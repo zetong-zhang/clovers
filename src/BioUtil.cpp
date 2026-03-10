@@ -46,7 +46,7 @@ char trans_tbl[64] = {
 float bio_util::gc_count(
     const char *pstr,
     const size_t len
-) {
+) noexcept {
     float count = 0.0F;
     for (size_t i = 0; i < len; i ++) {
         char c = std::tolower(pstr[i]);
@@ -58,13 +58,13 @@ float bio_util::gc_count(
 float bio_util::gc_fraction(
     const char *pstr,
     const size_t len
-) { 
+) noexcept { 
     return gc_count(pstr, len) / len; 
 }
 
 char *bio_util::get_complement(
     const std::string &origin
-) {
+) noexcept {
     size_t len = origin.size();
     char *comp = NEW char[len+1];
     if (!comp) return nullptr;
@@ -77,7 +77,7 @@ char *bio_util::get_complement(
 int bio_util::match_codon(
     const char *origin,
     const str_array &codons
-) {
+) noexcept {
     int num_codons = (int) codons.size();
     for (int index = 0; index < num_codons; index ++) {
         const char *pstr = codons.at(index).c_str();
@@ -121,8 +121,8 @@ static int refine_start(int_array &start_locs, int_array &start_types) {
     return t_start;
 }
 
-op_type bio_util::check_overprint(const bio::orf &a, const bio::orf &b, float ratio) {
-    if (!strcmp(a.host, b.host) && a.strand == b.strand) {
+op_type bio_util::check_overprint(const bio::orf &a, const bio::orf &b, float ratio, int min_olen) noexcept {
+    if (a.host == b.host && a.strand == b.strand) {
         int a_end = a.end, b_end = b.end;
         // 我是德布罗意的六世徒孙
         if (a_end < a.t_start) a_end += a.host_len;
@@ -130,10 +130,12 @@ op_type bio_util::check_overprint(const bio::orf &a, const bio::orf &b, float ra
         int olen = 0;
         if (a_end > b.t_start && b_end > a.t_start)
             olen = std::min(a_end, b_end) - std::max(a.t_start, b.t_start);
-        if (olen == a.len || olen == b.len) 
-            return op_type::INCLUDE;
-        else if ((olen / (float)std::min(a.len, b.len)) >= ratio) 
-            return op_type::INTERSECT;
+        if (olen >= min_olen) {
+            if ((olen == a.len || olen == b.len)) 
+                return op_type::INCLUDE;
+            else if ((olen / (float)std::min(a.len, b.len)) >= ratio) 
+                return op_type::INTERSECT;
+        }
     }
     return op_type::DISJOINT;
 }

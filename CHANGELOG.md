@@ -1,6 +1,16 @@
 # Change Log
 All notable changes to this project will be documented in this file.
 
+## [1.0.2] - 2026-03-10
+
+### Added
+- Added the parameter `minolen` to filter overprinted genes with a minimum overprinted length between two ORFs;
+- Added the length/topology of each sequence and date information to the output (GFF3, GBK and MED).
+
+### Changed
+- Optimized the exception handling of all the modules to improve performance;
+- Fix the issue where GBK output cannot be parsed by Biopython.
+
 ## [1.0.1] - 2026-03-09
 
 ### Added

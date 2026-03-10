@@ -70,9 +70,9 @@ struct svm_model
 
 struct svm_model *svm_train(const struct svm_problem *prob, const struct svm_parameter *param, int dim);
 
-float svm_predict_score(const struct svm_model *model, const float *x, int dim);
+float svm_predict_score(const struct svm_model *model, const float *x, int dim) noexcept;
 
-void svm_free_model_content(struct svm_model *model_ptr);
+void svm_free_model_content(struct svm_model *model_ptr) noexcept;
 
 #ifdef __cplusplus
 }

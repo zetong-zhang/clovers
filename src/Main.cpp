@@ -15,10 +15,18 @@
 #endif
 #include <chrono>
 #include <sys/stat.h>
+#include <iomanip>
 
 #include "cxxopts.hpp"
 // #include <thread>
 #include "BioIO.hpp"
+
+/**
+ * Convert date to format like "09-DEC-2025"
+ * @param tp Time point to convert
+ * @return Formatted date string
+ */
+std::string format_date(const std::chrono::system_clock::time_point& tp);
 
 /* run the program in quiet mode */
 static bool      QUIET = false;
@@ -98,6 +106,9 @@ int main(int argc, char *argv[]) {
     
     /* gol-reporter parameters */
     options.add_options("GOP-Reporter")
+        ("L,minolen",  "Specify the mininum overprinted length between two ORFs.",
+         cxxopts::value<uint32_t>()->default_value("120"))
+
         ("O,overprint","Write overprinted genes to the selected file (GFF3 format).",
          cxxopts::value<std::string>())
 
@@ -121,7 +132,7 @@ int main(int argc, char *argv[]) {
     /* show help information and exit with code 0 */
     if (argc <= 1 || args.count("help")) {
         std::cerr << "- - - - - - - - - - - - - - - - - - - - - - - - - - - -\n"
-                  << "PROTEIN-CODING GENE RECOGNITION SYSTEM OF CLOVERS 1.0.1\n\n"
+                  << "PROTEIN-CODING GENE RECOGNITION SYSTEM OF CLOVERS 1.0.2\n\n"
                   << "Copyright:  (C) 2003-2026 TUBIC,Tianjin University     \n"
                   << "Authors:    Zetong Zhang, Yan Lin*, Feng Gao*          \n"
                   << "Date:       November 30, 2025                          \n"
@@ -384,6 +395,26 @@ int main(int argc, char *argv[]) {
     delete[] i_scores;
     delete[] params;
 
+    /* check overprinted genes */
+    float min_ratio = args["ratio"].as<float>();
+    int min_olen = (int) args["minolen"].as<uint32_t>();
+    if (min_ratio < 0.0 || min_ratio > 1.0) {
+        std::cerr << "\nError: invalid minimum overlap ratio (range: 0.0-1.0)\n";
+        return 1;
+    }
+    bio::orf_array op_genes;
+    for (int i = 0; i < num_putative; i ++) {
+        for (int j = i + 1; j < num_putative; j ++) {
+            bio::orf &gene_1 = putative[i];
+            bio::orf &gene_2 = putative[j];
+            op_type type = bio_util::check_overprint(gene_1, gene_2, min_ratio, min_olen);
+            if (type != op_type::DISJOINT ) {
+                op_genes.push_back(gene_1);
+                op_genes.push_back(gene_2);
+            }
+        }
+    }
+
     /* write results to output */
     std::string output = "-";
     if (args.count("output")) output = args["output"].as<std::string>();
@@ -397,7 +428,8 @@ int main(int argc, char *argv[]) {
             return a_end < b_end;
         }
     });
-    bio_io::write_result(putative, output, format);
+    std::string date = format_date(std::chrono::system_clock::now());
+    bio_io::write_result(putative, date, circ, output, format);
 
     /* write protein sequences */
     if (args.count("faa")) {
@@ -411,29 +443,11 @@ int main(int argc, char *argv[]) {
         if(!bio_io::write_fna(putative, fna)) return 1;
     }
 
-    /* check overprinted genes */
-    float min_ratio = args["ratio"].as<float>();
-    if (min_ratio < 0.0 || min_ratio > 1.0) {
-        std::cerr << "\nError: invalid minimum overlap ratio (range: 0.0-1.0)\n";
-        return 1;
-    }
-    bio::orf_array op_genes;
-    for (int i = 0; i < num_putative; i ++) {
-        for (int j = i + 1; j < num_putative; j ++) {
-            bio::orf &gene_1 = putative[i];
-            bio::orf &gene_2 = putative[j];
-            op_type type = bio_util::check_overprint(gene_1, gene_2, min_ratio);
-            if (type != op_type::DISJOINT) {
-                op_genes.push_back(gene_1);
-                op_genes.push_back(gene_2);
-            }
-        }
-    }
-
     /* write overprinted gene coords */
     if (args.count("overprint")) {
         auto overprint = args["overprint"].as<std::string>();
-        if(!bio_io::write_overprint(op_genes, overprint)) return 1;
+        if(!bio_io::write_overprint(op_genes, min_ratio, min_olen, overprint)) 
+            return 1;
     }
 
     /* write overprinted gene proteins */
@@ -454,4 +468,21 @@ int main(int argc, char *argv[]) {
         auto seconds = duration.count() / 1000.0;
         std::cerr << "\nFinished in " << std::fixed << std::setprecision(3) << seconds << " s\n";
     }
+}
+
+std::string format_date(const std::chrono::system_clock::time_point& tp) {
+    auto time_t_val = std::chrono::system_clock::to_time_t(tp);
+    std::tm* tm_ptr = std::localtime(&time_t_val);
+    
+    std::ostringstream oss;
+    oss << std::setw(2) << std::setfill('0') << tm_ptr->tm_mday << '-';
+    
+    // Month abbreviations
+    const char* months[] = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN", 
+                           "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
+    oss << months[tm_ptr->tm_mon] << '-';
+    
+    oss << (tm_ptr->tm_year + 1900);
+    
+    return oss.str();
 }

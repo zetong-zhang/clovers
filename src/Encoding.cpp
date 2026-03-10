@@ -84,7 +84,7 @@ static float Z_COORD[][3] = {
     {+1, +0, +0}, {+1, +1, +1}
 };
 
-void encoding::mono_trans(const char *seq, int len, float *params) {
+void encoding::mono_trans(const char *seq, int len, float *params) noexcept {
     float counts[PHASE][3] = {{0.0f}};
         
     for (int i = 0; i < len; i ++) {
@@ -102,7 +102,7 @@ void encoding::mono_trans(const char *seq, int len, float *params) {
     }
 }
 
-void encoding::di_trans(const char *seq, int len, float *params) {
+void encoding::di_trans(const char *seq, int len, float *params) noexcept {
     float counts[PHASE][4][3] = {{{0.0f}}};
     int sublen = len - 1;
 
@@ -123,7 +123,7 @@ void encoding::di_trans(const char *seq, int len, float *params) {
         }
 }
 
-void encoding::tri_trans(const char *seq, int len, float *params) {
+void encoding::tri_trans(const char *seq, int len, float *params) noexcept {
     float counts[PHASE][4][4][3] = {{{{0.0f}}}};
     int sublen = len - 2;
 
@@ -148,7 +148,7 @@ void encoding::tri_trans(const char *seq, int len, float *params) {
         params[Z] = counts[p][s][b][Z] / len * PHASE;
     }
 }
-void encoding::quart_trans(const char *seq, int len, float *params) {
+void encoding::quart_trans(const char *seq, int len, float *params) noexcept {
     float counts[PHASE][4][4][4][3] = {{{{{0.0f}}}}};
     int sublen = len - 3;
 
@@ -176,7 +176,7 @@ void encoding::quart_trans(const char *seq, int len, float *params) {
     }
 }
 
-void encoding::encode(const char *seq, int len, float *data, int n_trans) {
+void encoding::encode(const char *seq, int len, float *data, int n_trans) noexcept {
     static void (*k_trans[4])(const char *, int, float *) = {
         mono_trans, di_trans, tri_trans, quart_trans
     };
@@ -186,7 +186,7 @@ void encoding::encode(const char *seq, int len, float *data, int n_trans) {
     }
 }
 
-void encoding::encode_orfs(bio::orf_array &orfs, float *data, int n_trans) {
+void encoding::encode_orfs(bio::orf_array &orfs, float *data, int n_trans) noexcept {
     const int count = (int) orfs.size();
 #ifdef _OPENMP
     #pragma omp parallel for
@@ -202,7 +202,7 @@ float *encoding::std_scale(
     int n, int dim,
     const float *means,
     const float *stds
-) {
+) noexcept {
     float *cache = NEW float[n*dim];
     for (int i = 0; i < n; i++) {
         int j;
@@ -219,7 +219,7 @@ float *encoding::minmax_scale(
     int n, int dim,
     float *mins,
     float *maxs
-) {
+) noexcept {
     for (int i = 0; i < n; i++) {
         int j;
         float *p = data + i*dim;

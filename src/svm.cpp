@@ -26,7 +26,7 @@ template <class S, class T> static inline void clone(T*& dst, S* src, int n)
 	dst = new T[n];
 	memcpy((void *)dst,(void *)src,sizeof(T)*n);
 }
-static inline float powi(float base, int times)
+static inline float powi(float base, int times) noexcept
 {
 	float tmp = base, ret = 1.0;
 
@@ -56,8 +56,8 @@ public:
 	// request data [0,len)
 	// return some position p where [p,len) need to be filled
 	// (p >= len if nothing needs to be filled)
-	int get_data(const int index, Qfloat **data, int len);
-	void swap_index(int i, int j);
+	int get_data(const int index, Qfloat **data, int len) noexcept;
+	void swap_index(int i, int j) noexcept;
 private:
 	int l;
 	size_t size;
@@ -70,8 +70,8 @@ private:
 
 	head_t *head;
 	head_t lru_head;
-	void lru_delete(head_t *h);
-	void lru_insert(head_t *h);
+	void lru_delete(head_t *h) noexcept;
+		void lru_insert(head_t *h) noexcept;
 };
 
 Cache::Cache(int l_,size_t size_):l(l_),size(size_)
@@ -90,14 +90,14 @@ Cache::~Cache()
 	free(head);
 }
 
-void Cache::lru_delete(head_t *h)
+void Cache::lru_delete(head_t *h) noexcept
 {
 	// delete from current location
 	h->prev->next = h->next;
 	h->next->prev = h->prev;
 }
 
-void Cache::lru_insert(head_t *h)
+void Cache::lru_insert(head_t *h) noexcept
 {
 	// insert to last position
 	h->next = &lru_head;
@@ -106,7 +106,7 @@ void Cache::lru_insert(head_t *h)
 	h->next->prev = h;
 }
 
-int Cache::get_data(const int index, Qfloat **data, int len)
+int Cache::get_data(const int index, Qfloat **data, int len) noexcept
 {
 	head_t *h = &head[index];
 	if(h->len) lru_delete(h);
@@ -136,7 +136,7 @@ int Cache::get_data(const int index, Qfloat **data, int len)
 	return len;
 }
 
-void Cache::swap_index(int i, int j)
+void Cache::swap_index(int i, int j) noexcept
 {
 	if(i==j) return;
 
@@ -188,7 +188,7 @@ public:
 	virtual ~Kernel();
 
 	static float k_function(const float *x, const float *y,
-				 const svm_parameter& param, int dim);
+			 const svm_parameter& param, int dim) noexcept;
 	virtual Qfloat *get_Q(int column, int len) const = 0;
 	virtual float *get_QD() const = 0;
 	virtual void swap_index(int i, int j) const	// no so const...
@@ -210,24 +210,24 @@ private:
 	const float gamma;
 	const float coef0;
 
-	static float dot(const float *px, const float *py, int dim);
-	float kernel_linear(int i, int j) const
+	static float dot(const float *px, const float *py, int dim) noexcept;
+	float kernel_linear(int i, int j) const noexcept
 	{
 		return dot(x[i],x[j], dim);
 	}
-	float kernel_poly(int i, int j) const
+	float kernel_poly(int i, int j) const noexcept
 	{
 		return powi(gamma*dot(x[i],x[j], dim)+coef0,degree);
 	}
-	float kernel_rbf(int i, int j) const
+	float kernel_rbf(int i, int j) const noexcept
 	{
 		return exp(-gamma*(x_square[i]+x_square[j]-2*dot(x[i],x[j], dim)));
 	}
-	float kernel_sigmoid(int i, int j) const
+	float kernel_sigmoid(int i, int j) const noexcept
 	{
 		return tanh(gamma*dot(x[i],x[j], dim)+coef0);
 	}
-	float kernel_precomputed(int i, int j) const
+	float kernel_precomputed(int i, int j) const noexcept
 	{
 		return x[i][(int)(x[j][0])];
 	}
@@ -274,7 +274,7 @@ Kernel::~Kernel()
 	delete[] x_square;
 }
 
-float Kernel::dot(const float *x, const float *y, int dim)
+float Kernel::dot(const float *x, const float *y, int dim) noexcept
 {
 #ifdef __AVX__
     __m256 sum = _mm256_setzero_ps();
@@ -318,7 +318,7 @@ float Kernel::dot(const float *x, const float *y, int dim)
 }
 
 float Kernel::k_function(const float *x, const float *y,
-                          const svm_parameter& param, int dim)
+                          const svm_parameter& param, int dim) noexcept
 {
     switch(param.kernel_type)
     {
@@ -451,10 +451,10 @@ protected:
 			alpha_status[i] = LOWER_BOUND;
 		else alpha_status[i] = FREE;
 	}
-	bool is_upper_bound(int i) { return alpha_status[i] == UPPER_BOUND; }
-	bool is_lower_bound(int i) { return alpha_status[i] == LOWER_BOUND; }
-	bool is_free(int i) { return alpha_status[i] == FREE; }
-	void swap_index(int i, int j);
+	bool is_upper_bound(int i) noexcept { return alpha_status[i] == UPPER_BOUND; }
+bool is_lower_bound(int i) noexcept { return alpha_status[i] == LOWER_BOUND; }
+bool is_free(int i) noexcept { return alpha_status[i] == FREE; }
+	void swap_index(int i, int j) noexcept;
 	void reconstruct_gradient();
 	virtual int select_working_set(int &i, int &j);
 	virtual float calculate_rho();
@@ -463,7 +463,7 @@ private:
 	bool be_shrunk(int i, float Gmax1, float Gmax2);
 };
 
-void Solver::swap_index(int i, int j)
+void Solver::swap_index(int i, int j) noexcept
 {
 	Q->swap_index(i,j);
 	swap(y[i],y[j]);
@@ -1303,7 +1303,7 @@ public:
 		return QD;
 	}
 
-	void swap_index(int i, int j) const
+	void swap_index(int i, int j) const noexcept
 	{
 		cache->swap_index(i,j);
 		Kernel::swap_index(i,j);
@@ -1352,7 +1352,7 @@ public:
 		return QD;
 	}
 
-	void swap_index(int i, int j) const
+	void swap_index(int i, int j) const noexcept
 	{
 		cache->swap_index(i,j);
 		Kernel::swap_index(i,j);
@@ -1394,7 +1394,7 @@ public:
 		next_buffer = 0;
 	}
 
-	void swap_index(int i, int j) const
+	void swap_index(int i, int j) const noexcept
 	{
 		swap(sign[i],sign[j]);
 		swap(index[i],index[j]);
@@ -1970,7 +1970,7 @@ svm_model *svm_train(const svm_problem *prob, const svm_parameter *param, int di
 	return model;
 }
 
-float svm_predict_score(const struct svm_model *model, const float *x, int dim) {
+float svm_predict_score(const struct svm_model *model, const float *x, int dim) noexcept {
     int l = model->l;
     float *sv_coef = model->sv_coef[0];
     float sum = 0.0;
@@ -1987,7 +1987,7 @@ float svm_predict_score(const struct svm_model *model, const float *x, int dim) 
 static char *line = NULL;
 static int max_line_len;
 
-void svm_free_model_content(svm_model* model_ptr)
+void svm_free_model_content(svm_model* model_ptr) noexcept
 {
 	if(model_ptr->free_sv && model_ptr->l > 0 && model_ptr->SV != NULL)
 		free((void *)(model_ptr->SV[0]));

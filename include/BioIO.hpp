@@ -2,7 +2,7 @@
  * @brief       Bioinformatics I/O operations. 
  * 
  * @author      Zetong Zhang, Yan Lin, Feng Gao
- * @version     1.0.1
+ * @version     1.0.2
  * @date        2025-11-30
  * @modified    2026-03-09
  * @license     GNU GPLv3
@@ -27,7 +27,7 @@
 /* The buffer size for file reading. */
 #define BUFF_SIZE 65536
 /* The version info of the software. */
-#define VERSION  "CLOVERS_v1.0.1"
+#define VERSION  "CLOVERS_v1.0.2"
 /* The namespace for bioinformatics I/O operations. */
 namespace bio_io {
     /**
@@ -37,7 +37,7 @@ namespace bio_io {
      * @return true If the file exists.
      *         false If the file does not exist.
      */
-    bool file_exists(std::string &path);
+    bool file_exists(std::string &path) noexcept;
     /** 
      * @brief   Read a FASTA or GenBank file from a stream.
      * 
@@ -51,12 +51,15 @@ namespace bio_io {
      * @brief   Write the predicted genes to a result file.
      * 
      * @param orfs      The predicted gene array to be written.
+     * @param date      The date of the prediction.
+     * @param is_circ   Whether the scaffold is circular.
      * @param filename  The path to the output file.
      * @param format    The format of the output file.
      * @return true If the file is successfully written.
      *         false If the file is not successfully written.
      */
-    bool write_result(bio::orf_array &orfs, const std::string &filename, const std::string &format);
+    bool write_result(bio::orf_array &orfs, const std::string &date, bool is_circ, 
+                      const std::string &filename, const std::string &format);
     /** 
      * @brief   Write the translated proteins to a FASTA file.
      * 
@@ -79,11 +82,13 @@ namespace bio_io {
      * @brief   Write predicted overprinted genes to a GFF3 file.
      * 
      * @param orfs      The overprinted genes.
+     * @param ratio     The ratio of the overprinted length to the shorter ORF.
+     * @param min_olen  The minimum overprinted length between two ORFs.
      * @param filename  The path to the output file.
      * @return true If the file is successfully written.
      *         false If the file is not successfully written.
      */
-    bool write_overprint(bio::orf_array &orfs, const std::string &filename);
+    bool write_overprint(bio::orf_array &orfs, const float ratio, const int min_olen, const std::string &filename);
     /** 
      * @brief   Write the CDS model (RBF-SVM) to a file.
      * 

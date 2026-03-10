@@ -2,7 +2,7 @@
  * @brief   Utility functions for bioinformatics.
  * 
  * @author      Zetong Zhang, Yan Lin, Feng Gao
- * @version     1.0.1
+ * @version     1.0.2
  * @date        2025-11-30
  * @modified    2026-03-09
  * @license     GNU GPLv3
@@ -33,7 +33,7 @@ namespace bio_util {
      * @param   len length of the sequence.
      * @return  float GC number.
      */
-    float   gc_count(const char *seq, const size_t len);
+    float   gc_count(const char *seq, const size_t len) noexcept;
     /**
      * @brief   calculate GC fraction in a nucleotide sequence.
      * 
@@ -41,14 +41,14 @@ namespace bio_util {
      * @param   len length of the sequence.
      * @return  float GC fraction.
      */
-    float   gc_fraction(const char *seq, const size_t len);
+    float   gc_fraction(const char *seq, const size_t len) noexcept;
     /**
      * @brief   get the complement sequence of a nucleotide sequence.
      * 
      * @param   seq nucleotide sequence.
      * @return  char* complement sequence.
      */
-    char *  get_complement(const std::string &seq);
+    char *  get_complement(const std::string &seq) noexcept;
     /**
      * @brief   check if a codon matches any of the codons in the array.
      * 
@@ -56,7 +56,7 @@ namespace bio_util {
      * @param   codons   codon array.
      * @return  int      index of the matched codon.
      */
-    int     match_codon(const char *origin, const str_array &codons);
+    int     match_codon(const char *origin, const str_array &codons) noexcept;
     /**
      * @brief   get ORFs in a nucleotide sequence.
      * 
@@ -86,7 +86,7 @@ namespace bio_util {
      * @param   min_olen minimum overprint length.
      * @return  op_type overprint type.
      */
-    op_type check_overprint(const bio::orf &a, const bio::orf &b, float min_olen=0.6);
+    op_type check_overprint(const bio::orf &a, const bio::orf &b, float ratio, int min_olen) noexcept;
 }
 
 #endif

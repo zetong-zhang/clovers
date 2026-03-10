@@ -118,6 +118,9 @@ Max iteration times for TIS revision. (default: 20)
 Write (if none exists) or use the specified TIS model file.
 
 #### GOP-Reporter options:  
+* `-L, --minolen`  
+Specify the mininum overprinted length between two ORFs. (default: 120)
+
 * `-O, --overprint`  
 Write overprinted genes to the selected file (GFF3 format).
 
@@ -189,26 +192,27 @@ ORIGIN
     **GFF File Example:**
     ```
     ##gff-version 3
-    NC_000913.3	CLOVERS_v1.0.0	CDS	337	2799	0.974	+	0	ID=orf000001
-    NC_000913.3	CLOVERS_v1.0.0	CDS	2801	3733	0.968	+	0	ID=orf000002
+    # NC_000913.3	4641652 bp	linear	UNA	10-MAR-2026
+    NC_000913.3	CLOVERS_v1.0.1	CDS	337	2799	0.974	+	0	ID=orf000001
+    NC_000913.3	CLOVERS_v1.0.1	CDS	2801	3733	0.968	+	0	ID=orf000002
     . . .
     ```
     **GenBank File Example:**
     ```
-    LOCUS       NC_000913.3
+    LOCUS       NC_000913.3          4641652 bp    DNA       linear UNA 10-MAR-2026
     DEFINITION  NC_000913.3
     FEATURES             Location/Qualifiers
         CDS             337..2799
-                        /note="version=CLOVERS_v1.0.0;ID=orf000001;score=0.974"
+                        /note="version=CLOVERS_v1.0.1;ID=orf000001;score=0.974"
         CDS             2801..3733
-                        /note="version=CLOVERS_v1.0.0;ID=orf000002;score=0.968"
+                        /note="version=CLOVERS_v1.0.1;ID=orf000002;score=0.968"
     . . .
     ORIGIN
     //
     ```
     **MED File Example:**
     ```
-    # NC_000913.3
+    # NC_000913.3	4641652 bp	linear	UNA	10-MAR-2026
     337 2799	+
     2801 3733	+
     . . .

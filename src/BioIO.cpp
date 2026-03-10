@@ -16,7 +16,7 @@ static bool is_gzip(const std::string &filename) {
     return (magic[0] == 0x1F && magic[1] == 0x8B);
 }
 
-bool bio_io::file_exists(std::string &path) {
+bool bio_io::file_exists(std::string &path) noexcept {
     struct stat buffer;
     return (stat(path.c_str(), &buffer) == 0);
 }
@@ -119,6 +119,7 @@ static bool read_stream(
  * 
  * @param handle    The output stream.
  * @param orfs      The ORF array to be written.
+ * @param is_circ   Whether the scaffold is circular.
  * @param format    The format of the output file.
  * @return true If the file is successfully written.
  *         false If the file is not successfully written.
@@ -126,13 +127,21 @@ static bool read_stream(
 static bool write_stream(
     std::ostream &handle,
     bio::orf_array &orfs,
+    const std::string &date,
+    bool is_circ,
     const std::string &format
 ) {
     int count = (int) orfs.size();
     if (format == "gff") {
         handle << "##gff-version 3 \n";
+        char *last_scaffold = nullptr;
         for (int i = 0, j = 0; i < count; i ++) {
             // seqid + source + type
+            if (last_scaffold != orfs[i].host) {
+                handle << "# " << orfs[i].host << '\t' << orfs[i].host_len << " bp\t"
+                       << (is_circ ? "circular" : "linear") << "\tUNA\t" << date << '\n';
+                last_scaffold = orfs[i].host;
+            }
             handle << orfs[i].host << '\t' << VERSION << "\tCDS\t";
             int rstart, rend, host_len = orfs[i].host_len;
             if (orfs[i].strand == '+') {
@@ -159,9 +168,11 @@ static bool write_stream(
     } else if (format == "gbk") {
         char *last_scaffold = nullptr;
         for (int i = 0, j = 0; i < count; i ++) {
-            if (!last_scaffold || std::strcmp(orfs[i].host, last_scaffold)) {
+            if (last_scaffold != orfs[i].host) {
                 if (last_scaffold) handle << "ORIGIN\n//\n";
-                handle << "LOCUS       " << orfs[i].host << "\n";
+                handle << "LOCUS       " << orfs[i].host << ' ' << std::setw(27-(int)std::strlen(orfs[i].host)) 
+                       << orfs[i].host_len << " bp" << "    DNA" << std::setw(13) 
+                       << (is_circ ? "circular" : " linear") << " UNA " << date << '\n';
                 handle << "DEFINITION  " << orfs[i].host << "\n";
                 last_scaffold = orfs[i].host;
                 handle << "FEATURES             Location/Qualifiers\n";
@@ -194,13 +205,14 @@ static bool write_stream(
                    << ";score=" << std::fixed << std::setprecision(3) 
                    << orfs[i].score << "\"\n";
         }
-        handle << "ORIGIN\n//\n";
+        if (count > 0) handle << "ORIGIN\n//\n";
         return true;
     } else if (format == "med") {
         char *last_scaffold = nullptr;
         for (int i = 0, j = 0; i < count; i ++) {
-            if (!last_scaffold || std::strcmp(orfs[i].host, last_scaffold)) {
-                handle << "# " << orfs[i].host << "\n";
+            if (last_scaffold != orfs[i].host) {
+                handle << "# " << orfs[i].host << '\t' << orfs[i].host_len << " bp\t"
+                       << (is_circ ? "circular" : "linear") << "\tUNA\t" << date << '\n';
                 last_scaffold = orfs[i].host;
             }
             bool neg_strand = (bool)(orfs[i].strand == '-');
@@ -260,17 +272,19 @@ bool bio_io::read_source(
 
 bool bio_io::write_result(
     bio::orf_array &orfs, 
+    const std::string &date,
+    bool is_circ,
     const std::string &filename,
     const std::string &format
 ) {
-    if (filename == "-") return write_stream(std::cout, orfs, format);
+    if (filename == "-") return write_stream(std::cout, orfs, date, is_circ, format);
     else {
         std::ofstream handle(filename);
         if (!handle.is_open()) {
             std::cerr << "\nError: failed to open " << filename << '\n';
             return false;
         }
-        return write_stream(handle, orfs, format);
+        return write_stream(handle, orfs, date, is_circ, format);
     }
 }
 
@@ -479,6 +493,8 @@ bool bio_io::read_model(
 
 bool bio_io::write_overprint(
     bio::orf_array &orfs,
+    const float ratio,
+    const int min_olen,
     const std::string &filename
 ) {
     std::ofstream handle(filename);
@@ -490,7 +506,7 @@ bool bio_io::write_overprint(
     int count = (int) orfs.size() / 2;
     for (int i = 0; i < count; i ++) {
         bio::orf &gene_1 = orfs[2*i], &gene_2 = orfs[2*i+1];
-        op_type type = bio_util::check_overprint(gene_1, gene_2);
+        op_type type = bio_util::check_overprint(gene_1, gene_2, ratio, min_olen);
         handle << "# index=" << std::setw(4) << std::setfill('0') << (i+1) << ";type=" 
                << (type == op_type::INTERSECT ? "INTERSECT\n" : "INCLUDE\n");
         int rstart, rend, host_len;
