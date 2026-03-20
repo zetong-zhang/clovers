@@ -2,9 +2,9 @@
  * @brief       Bioinformatics I/O operations. 
  * 
  * @author      Zetong Zhang, Yan Lin, Feng Gao
- * @version     1.0.2
+ * @version     1.0.3
  * @date        2025-11-30
- * @modified    2026-03-09
+ * @modified    2026-03-20
  * @license     GNU GPLv3
  * @contact     ylin@tju.edu.cn | fgao@tju.edu.cn
  */
@@ -27,7 +27,7 @@
 /* The buffer size for file reading. */
 #define BUFF_SIZE 65536
 /* The version info of the software. */
-#define VERSION  "CLOVERS_v1.0.2"
+#define VERSION  "CLOVERS_v1.0.3"
 /* The namespace for bioinformatics I/O operations. */
 namespace bio_io {
     /**

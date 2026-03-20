@@ -50,6 +50,7 @@ static bool read_stream(
                 size_t sep = header.find(' ');
                 std::string entry = sep>1 ? header.substr(1, sep-1):header.substr(1);
                 if (!entry.empty()) {
+                    if (entry.back() == '\r') entry.pop_back();
                     scaffolds.emplace_back(std::move(entry), std::move(buffer));
                     header = std::move(line);
                     buffer.clear();
@@ -104,13 +105,53 @@ static bool read_stream(
             } else if (in_origin) {
                 for (char c : line) if (std::isalpha(c)) buffer += std::toupper(c);
             }
+        } 
+        if (!buffer.empty()) {
+            scaffolds.emplace_back(std::move(entry), std::move(buffer));
+        }
+        return true;
+    // EMBL files should start with 'ID   '
+    } else if (!header.find("ID   ")) {
+        bool in_sequence = false;
+        std::string entry;
+        std::istringstream header_stream(header);
+        header_stream >> entry;
+        if (!(header_stream >> entry)) {
+            std::cerr << "\nError: invalid ID line \n";
+            return false;
+        }
+        while (std::getline(handle, line)) {
+            if (line.empty()) continue;
+            else if (!line.find("SQ   ")) in_sequence = true;
+            else if (!line.find("//")) {
+                if (!buffer.empty()) {
+                    scaffolds.emplace_back(std::move(entry), std::move(buffer));
+                    entry.clear(), buffer.clear();
+                }
+                in_sequence = false;
+            } else if (!line.find("ID   ")) {
+                if (!buffer.empty()) {
+                    scaffolds.emplace_back(std::move(entry), std::move(buffer));
+                    entry.clear(), buffer.clear();
+                }
+                in_sequence = false;
+
+                std::istringstream header_stream(line);
+                header_stream >> entry;
+                if (!(header_stream >> entry)) {
+                    std::cerr << "\nError: invalid ID line \n";
+                    return false;
+                }
+            } else if (in_sequence) {
+                for (char c : line) if (std::isalpha(c)) buffer += std::toupper(c);
+            }
         }
         if (!buffer.empty()) {
             scaffolds.emplace_back(std::move(entry), std::move(buffer));
         }
         return true;
     } else {
-        std::cerr << "\nError: unsupported file type (options: GenBank, FASTA)\n";
+        std::cerr << "\nError: unsupported file type (options: GenBank, EMBL, FASTA)\n";
         return false;
     }
 }

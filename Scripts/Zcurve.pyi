@@ -15,7 +15,7 @@ Example:
     >>> sequences = ["ATCGATCG", "GCTAGCTA"]
     >>> features = Zcurve.encode(sequences)
     >>> print(features.shape)
-    (2, 189)
+    (2, 765)
 
 The module is optimized for performance using AVX/FMA instructions and supports
 parallel processing through multi-threading for efficient handling of large
@@ -37,7 +37,7 @@ def encode(records: List[str], n_jobs: int = 0) -> np.ndarray:
     Returns:
         np.ndarray: A 2D array where each row represents the Z-curve features
             for a sequence. The number of columns depends on the feature extraction
-            method (typically 189 features per sequence).
+            method (typically 765 features per sequence).
     
     Raises:
         TypeError: If records is not a list of strings.

@@ -1,6 +1,15 @@
 # Change Log
 All notable changes to this project will be documented in this file.
 
+## [1.0.3] - 2026-03-20
+
+### Added
+- Added EMBL format support for input files.
+- Added third-party terms for TriTISA to the LICENSE file.
+
+### Changed
+- Fixed a possible array out-of-bounds issue in the function `mm_train`.
+
 ## [1.0.2] - 2026-03-10
 
 ### Added

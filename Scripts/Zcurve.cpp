@@ -14,7 +14,7 @@
 #define  W      1.0F/3
 #define  Q      1.0F/4
 // Z-curve transformation dimension
-#define  DIM_S  189
+#define  DIM_A  765
 /* 
  * Map for converting ASCII chars into one-hot vectors
  *
@@ -180,6 +180,39 @@ static void tri_trans(const char *seq, int len, float *params) {
         params[Z] = counts[p][s][b][Z] / len * PHASE;
     }
 }
+/**
+ * @brief           Calculate 3-mer Z-curve params for a given sequence.
+ * @param seq       The input sequence.
+ * @param len       The length of the input sequence.
+ * @param params    The output Z-curve parameters.
+ */
+static void quart_trans(const char *seq, int len, float *params) {
+    float counts[PHASE][4][4][4][3] = {{{{{0.0f}}}}};
+    int sublen = len - 2;
+
+    for (int i = 0; i < sublen; i ++) {
+        int p = i % PHASE;
+        for (int s = 0; s < 4; s ++)
+        for (int t = 0; t < 4; t ++)
+        for (int b = 0; b < 4; b ++) {
+            counts[p][s][t][b][X] += ONE_HOT[(int)seq[i]][s] * ONE_HOT[(int)seq[i]][t] * 
+                                     ONE_HOT[(int)seq[i + 1]][b] * Z_COORD[(int)seq[i + 2]][X];
+            counts[p][s][t][b][Y] += ONE_HOT[(int)seq[i]][s] * ONE_HOT[(int)seq[i]][t] * 
+                                     ONE_HOT[(int)seq[i + 1]][b] * Z_COORD[(int)seq[i + 2]][Y];
+            counts[p][s][t][b][Z] += ONE_HOT[(int)seq[i]][s] * ONE_HOT[(int)seq[i]][t] * 
+                                     ONE_HOT[(int)seq[i + 1]][b] * Z_COORD[(int)seq[i + 2]][Z];
+        }
+    }
+
+    for (int p = 0; p < PHASE; p ++)
+    for (int s = 0; s < 4; s ++)
+    for (int t = 0; t < 4; t ++)
+    for (int b = 0; b < 4; b ++, params += 3) {
+        params[X] = counts[p][s][t][b][X] / len * PHASE;
+        params[Y] = counts[p][s][t][b][Y] / len * PHASE;
+        params[Z] = counts[p][s][t][b][Z] / len * PHASE;
+    }
+}
 
 PyObject *encode(PyObject *self, PyObject *args, PyObject *kw) {
     import_array();
@@ -213,7 +246,7 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kw) {
         seqs[i] = (char *)PyUnicode_AsUTF8(item);
     }
 
-    float *params = new float[n_records * DIM_S];
+    float *params = new float[n_records * DIM_A];
     if (params == NULL) {
         PyErr_SetString(PyExc_MemoryError, "Failed to allocate memory");
         return NULL;
@@ -227,10 +260,11 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kw) {
     for (int i = 0; i < n_jobs; i++) {
         threads[i] = NEW std::thread([i, n_jobs, n_records, params, &seqs, &lens]() {
             for (int j = i; j < n_records; j += n_jobs) {
-                float *head = params + (j * DIM_S);
+                float *head = params + (j * DIM_A);
                 mono_trans(seqs[j], lens[j], head);
                 di_trans(seqs[j], lens[j], head+9);
                 tri_trans(seqs[j], lens[j], head+45);
+                quart_trans(seqs[j], lens[j], head+189);
             }
         });
     }
@@ -244,7 +278,7 @@ PyObject *encode(PyObject *self, PyObject *args, PyObject *kw) {
     }
     delete[] threads;
 
-    npy_intp dims[] = { n_records, DIM_S };
+    npy_intp dims[] = { n_records, DIM_A };
     PyObject* np_array = PyArray_SimpleNewFromData(2, dims, NPY_FLOAT32, params);
 
     if (!np_array) {

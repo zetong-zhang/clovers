@@ -2,7 +2,7 @@
  * @brief       Encoding functions for Z-curve.
  * 
  * @author      Zetong Zhang, Yan Lin, Feng Gao
- * @version     1.0.2
+ * @version     1.0.3
  * @date        2025-11-30
  * @modified    2026-02-28
  * @license     GNU GPLv3

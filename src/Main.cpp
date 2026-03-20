@@ -4,8 +4,9 @@
  *                                                         *    
  *   @copyright: (C) 2003-2026 TUBIC, Tianjin University   *
  *   @author:    Zetong Zhang, Yan Lin, Feng Gao           *
- *   @version:   1.0.0                                     *
+ *   @version:   1.0.3                                     *
  *   @date:      2025-11-30                                *
+ *   @modified   2025-03-20                                *
  *   @license:   GNU GPLv3                                 *
  *   @contact:   ylin@tju.edu.cn | fgao@tju.edu.cn         *
  *                                                         *
@@ -60,7 +61,7 @@ int main(int argc, char *argv[]) {
     
     /* input/output parameters */
     options.add_options("Input/Output")
-        ("i,input",    "Specify FASTA/Genbank input file or their compressed versions (gzip). (default: stdin)",
+        ("i,input",    "Specify FASTA/Genbank/EMBL input file or their compressed versions (gzip). (default: stdin)",
          cxxopts::value<std::string>())
         
         ("o,output",   "Specify output file. (default: stdout)",
@@ -132,7 +133,7 @@ int main(int argc, char *argv[]) {
     /* show help information and exit with code 0 */
     if (argc <= 1 || args.count("help")) {
         std::cerr << "- - - - - - - - - - - - - - - - - - - - - - - - - - - -\n"
-                  << "PROTEIN-CODING GENE RECOGNITION SYSTEM OF CLOVERS 1.0.2\n\n"
+                  << "PROTEIN-CODING GENE RECOGNITION SYSTEM OF CLOVERS 1.0.3\n\n"
                   << "Copyright:  (C) 2003-2026 TUBIC,Tianjin University     \n"
                   << "Authors:    Zetong Zhang, Yan Lin*, Feng Gao*          \n"
                   << "Date:       November 30, 2025                          \n"
@@ -358,6 +359,7 @@ int main(int argc, char *argv[]) {
                 }
             }
         }
+        STARTS.push_back("CTG");
         if (params == nullptr && n_seeds >= MIN_MARKOV_SET) {
             params = NEW float[TIS_S];
             if (params == nullptr) {
@@ -365,20 +367,20 @@ int main(int argc, char *argv[]) {
                 return 1;
             }
             int round = 0;
-            for (int order = 1; order < 3; order ++) {
+            for (int order = 0; order < 3; order ++) {
                 for (int iter = 0; iter < maxiter; iter ++) {
                     round += 1;
                     if (!QUIET) std::cerr << "\rRevising TIS Model ..." << std::setw(27) 
                                           << "Round #" + std::to_string(round);
                     model::mm_train(putative, order, params, STARTS, table, pFU, pFD, max_alter);
-                    float ratio = model::mm_revise(putative, order, params, pFU, pFD, max_alter);
-                    if (ratio > 0.9) break;
+                    float ratio = model::mm_revise(putative, order, params, pFU, pFD, max_alter, minlen);
+                    if (ratio > 0.99) break;
                 }
             }
         } else if (params != nullptr) {
-            model::mm_revise(putative, 2, params, pFU, pFD, max_alter);
+            model::mm_revise(putative, 2, params, pFU, pFD, max_alter, minlen);
         } else {
-            model::mm_revise(putative, 2, tis_params, 0.855970, 5.144030, 7);
+            model::mm_revise(putative, 2, tis_params, 0.83118, 5.16882, 7, minlen);
             if (!QUIET) std::cerr << "\rRevising TIS Model ..." << std::setw(27) << "Skipped";
         }
         if (params && !model_file.empty()) {

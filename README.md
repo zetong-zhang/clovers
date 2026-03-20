@@ -25,6 +25,7 @@ Ab initio prediction of overprinted genes using the Z-curve method
 - **[Examples](#examples)** - Usage examples with command-line options
 - **[Input](#input)** - Description of the input files and formats
 - **[Output](#output)** - Description of the output files and formats
+- **[Performance](#performance)** - Performance benchmarks and comparisons with other tools
 - **[Structure](#structure)** - Project file structure and organization
 - **[Server](#server)** - Free available server for running tasks online
 - **[Citation](#citation)** - Citation guide for academic use
@@ -74,7 +75,7 @@ Number of threads to use. Please set as a positive integer. (default: all)
 
 #### Input/Output Options
 * `-i, --input`   
-Specify FASTA/Genbank input file or their compressed versions (gzip). (default: stdin)  
+Specify FASTA/Genbank/EMBL input file or their compressed versions (gzip). (default: stdin)  
 
 * `-o, --output`  
 Specify output file. (default: stdout)
@@ -243,6 +244,29 @@ ORIGIN
     TTGTTCATATTTGCCGGCTGGATACGGCGGGCGCACGAGTACTGGAAAACTAA
     . . .
     ```
+## Performance
+CLOVERS is tested on a variety of reference genomes with MS-verified and RefSeq homology-supported gene annotations to compare its performance with other tools (Prodigal, GeneMarkS-2+, Glimmer, ZCURVE). The main performance metrics include sensitivity (for both common and overprinted genes), specificity and processing speed. 
+
+### Sensitivity & Specificity
+Sensitivity is the proportion of correctly predicted genes out of all evidenced genes, while specificity is measured by the false positive count on simulated genomes that were expected to contain no coding sequences.  
+
+**Predictions on genomes with MS-verified genes**
+
+This dataset was derived from a previously published benchmark dataset of 54 genomes used for evaluating GeneMarkS-2+, for which large-scale mass spectrometry (MS) experiments provided peptide-level evidence of protein expression.
+
+![ms_verified](.figures/MS_verified.png)  
+
+**Predictions on genomes with RefSeq-annotated genes**
+
+On July 21, 2025, high-quality assembled genome sequences of 1,789 bacteria and 177 archaea were downloaded from the RefSeq database, spanning 60 phyla and covering a GC-content range of 14%-75%. Note that only genomes belonging to distinct genera were selected to ensure an. Genes with clear experimental or homology evidence in the annotation were extracted to construct the benckmark set.
+
+![refseq_anno](.figures/RefSeq_anno.png)
+
+**Processing Speed**
+
+Benchmarking was conducted using an Intel Core i7-13620H (16 threads).
+
+![proc_speed](.figures/Process_Speed.png)
 
 ## Structure
 ```
@@ -281,14 +305,14 @@ clovers/
 ```
 
 ## Citation
-Zetong Zhang, Yan Lin, Feng Gao. Ab initio prediction of overprinted genes using the Z-curve method.
+Zetong Zhang, Yan Lin*, Feng Gao*. Ab initio prediction of overprinted genes using the Z-curve method.
 
 ## Server
-- **CLOVERS Server**: Free available at [https://tubic.tju.edu.cn/clovers](https://tubic.tju.edu.cn/clovers/).
+- **CLOVERS Server**: Free available at [https://tubic.tju.edu.cn/clovers/](https://tubic.tju.edu.cn/clovers/).
 
 ## Contact
 - **Author**: Zetong Zhang, Yan Lin*, Feng Gao*
-- **Homepage**: [https://tubic.tju.edu.cn/clovers](https://tubic.tju.edu.cn/clovers)
+- **Homepage**: [https://tubic.tju.edu.cn/clovers/](https://tubic.tju.edu.cn/clovers/)
 - **GitHub**: [https://github.com/zetong-zhang/clovers](https://github.com/zetong-zhang/clovers)
 - **Issues**: Report bugs or feature requests on the [GitHub Issues](https://github.com/zetong-zhang/clovers/issues) page
 
