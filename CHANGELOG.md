@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Fixed a possible array out-of-bounds issue in the function `mm_train`.
+- TIS revision has now been moved to take place before the CDS training.
 
 ## [1.0.2] - 2026-03-10
 

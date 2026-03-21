@@ -286,6 +286,60 @@ int main(int argc, char *argv[]) {
         off += gc_intv_count[i];
     }
 
+    /* revise gene starts*/
+    bool flag = !(bool) args.count("bypass");
+    if (flag) {
+        if (!QUIET) std::cerr << "\nRevising TIS Model ..." << std::setw(27) << "Round #0";
+        bio::orf_array seeds;
+        for (int i = 0, j = 0; i < n_orfs; i ++) {
+            if (i_scores[i] >= UP_PROBA && orfs[i].len >= 300)
+                seeds.push_back(orfs[i]);
+        }
+        int n_seeds = (int) seeds.size(), max_alter;
+        float *params = nullptr, pFU, pFD;
+        auto maxiter = args["maxiter"].as<uint32_t>();
+        std::string model_file;
+        if (args.count("tis")) {
+            model_file = args["tis"].as<std::string>();
+            if (bio_io::file_exists(model_file)) {
+                params = NEW float[TIS_S];
+                if (!bio_io::read_model(params, max_alter, pFU, pFD, model_file)) {
+                    delete[] params;
+                    params = nullptr;
+                }
+            }
+        }
+        STARTS.push_back("CTG");
+        if (params == nullptr && n_seeds >= MIN_MARKOV_SET) {
+            params = NEW float[TIS_S];
+            if (params == nullptr) {
+                std::cerr << MEM_ERR_INFO << '\n';
+                return 1;
+            }
+            int round = 0;
+            for (int order = 0; order < 3; order ++) {
+                for (int iter = 0; iter < maxiter; iter ++) {
+                    round += 1;
+                    if (!QUIET) std::cerr << "\rRevising TIS Model ..." << std::setw(27) 
+                                          << "Round #" + std::to_string(round);
+                    model::mm_train(seeds, order, params, STARTS, table, pFU, pFD, max_alter);
+                    float ratio = model::mm_revise(seeds, order, params, pFU, pFD, max_alter, minlen);
+                    if (ratio > 0.99) break;
+                }
+            }
+            model::mm_revise(orfs, 2, params, pFU, pFD, max_alter, minlen);
+        } else if (params != nullptr) {
+            model::mm_revise(orfs, 2, params, pFU, pFD, max_alter, minlen);
+        } else {
+            model::mm_revise(orfs, 2, tis_params, 0.83118, 5.16882, 7, minlen);
+            if (!QUIET) std::cerr << "\rRevising TIS Model ..." << std::setw(27) << "Skipped";
+        }
+        if (params && !model_file.empty()) {
+            bio_io::write_model(params, max_alter, pFU, pFD, model_file);
+        }
+        delete[] params;
+    } else if (!QUIET) std::cerr << "\nRevising TIS Model ..." << std::setw(27) << "Bybassed";
+
     /* train rbf-svm model */
     if (!QUIET) std::cerr << "\nTraining CDS Model ...";
     float *d_scores = NEW float[n_orfs]();
@@ -296,6 +350,7 @@ int main(int argc, char *argv[]) {
     float mins[DIM_S], maxs[DIM_S];
     svm_model* cds_model = nullptr;
     if (training) {
+        encoding::encode_orfs(orfs, params, 3);
         std::string model_file;
         if (args.count("train")) {
             model_file = args["train"].as<std::string>();
@@ -329,7 +384,7 @@ int main(int argc, char *argv[]) {
             }
         }
         if (!QUIET) std::cerr << std::setw(28) << (cds_model ? "Done\n" : "Skipped\n");
-    } else if (!QUIET) std::cerr << std::setw(28) << "Bypassed\n";
+    } else { if (!QUIET) std::cerr << std::setw(28) << "Bypassed\n"; W = 1.5; }
 
     /* classifying orfs and selection of seed orfs */
     auto thres = args["thres"].as<float>();
@@ -339,59 +394,9 @@ int main(int argc, char *argv[]) {
         if (orfs[i].score > thres) putative.push_back(orfs[i]);
     }
 
-    /* revise gene starts*/
-    bool flag = !(bool) args.count("bypass");
-    if (flag) {
-        if (!QUIET) std::cerr << "Revising TIS Model ..." << std::setw(27) << "Round #0";
-        int n_seeds = 0, max_alter;
-        for (int i = 0; i < putative.size(); i ++) 
-            if (putative[i].len >= 300) n_seeds ++;
-        float *params = nullptr, pFU, pFD;
-        auto maxiter = args["maxiter"].as<uint32_t>();
-        std::string model_file;
-        if (args.count("tis")) {
-            model_file = args["tis"].as<std::string>();
-            if (bio_io::file_exists(model_file)) {
-                params = NEW float[TIS_S];
-                if (!bio_io::read_model(params, max_alter, pFU, pFD, model_file)) {
-                    delete[] params;
-                    params = nullptr;
-                }
-            }
-        }
-        STARTS.push_back("CTG");
-        if (params == nullptr && n_seeds >= MIN_MARKOV_SET) {
-            params = NEW float[TIS_S];
-            if (params == nullptr) {
-                std::cerr << MEM_ERR_INFO << '\n';
-                return 1;
-            }
-            int round = 0;
-            for (int order = 0; order < 3; order ++) {
-                for (int iter = 0; iter < maxiter; iter ++) {
-                    round += 1;
-                    if (!QUIET) std::cerr << "\rRevising TIS Model ..." << std::setw(27) 
-                                          << "Round #" + std::to_string(round);
-                    model::mm_train(putative, order, params, STARTS, table, pFU, pFD, max_alter);
-                    float ratio = model::mm_revise(putative, order, params, pFU, pFD, max_alter, minlen);
-                    if (ratio > 0.99) break;
-                }
-            }
-        } else if (params != nullptr) {
-            model::mm_revise(putative, 2, params, pFU, pFD, max_alter, minlen);
-        } else {
-            model::mm_revise(putative, 2, tis_params, 0.83118, 5.16882, 7, minlen);
-            if (!QUIET) std::cerr << "\rRevising TIS Model ..." << std::setw(27) << "Skipped";
-        }
-        if (params && !model_file.empty()) {
-            bio_io::write_model(params, max_alter, pFU, pFD, model_file);
-        }
-        delete[] params;
-    } else if (!QUIET) std::cerr << "Revising TIS Model ..." << std::setw(27) << "Bybassed";
-
     if (cds_model) svm_free_model_content(cds_model);
     int num_putative = (int) putative.size();
-    if (!QUIET) std::cerr << "\nNumber of Putative Genes:" << std::setw(24) << num_putative << "\n";
+    if (!QUIET) std::cerr << "Number of Putative Genes:" << std::setw(24) << num_putative << "\n";
 
     delete[] d_scores;
     delete[] i_scores;

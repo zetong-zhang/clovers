@@ -37,7 +37,7 @@
 /* number of TIS model params */
 const int TIS_S = ((U_REGION+D_REGION)*64+16)*3;
 /* mininum set size for Markov training */
-const int MIN_MARKOV_SET = 5;
+const int MIN_MARKOV_SET = 3;
 /* SVM hyper-params. */
 extern svm_parameter param;
 /* pretrained TIS params */
