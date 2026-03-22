@@ -160,6 +160,7 @@ static bool read_stream(
  * 
  * @param handle    The output stream.
  * @param orfs      The ORF array to be written.
+ * @param table     The genetic table used.
  * @param is_circ   Whether the scaffold is circular.
  * @param format    The format of the output file.
  * @return true If the file is successfully written.
@@ -169,12 +170,13 @@ static bool write_stream(
     std::ostream &handle,
     bio::orf_array &orfs,
     const std::string &date,
-    bool is_circ,
+    std::string &table, bool is_circ,
     const std::string &format
 ) {
     int count = (int) orfs.size();
     if (format == "gff") {
         handle << "##gff-version 3 \n";
+        handle << "# Translation Table: " << table << '\n';
         char *last_scaffold = nullptr;
         for (int i = 0, j = 0; i < count; i ++) {
             // seqid + source + type
@@ -241,7 +243,8 @@ static bool write_stream(
                 handle << rend;
             }
             if (neg_strand) handle << ")";
-            handle << "\n                     /note=\"version=" << VERSION 
+            handle << "\n                     /transl_table=" << table
+                   << "\n                     /note=\"version=" << VERSION 
                    << ";ID=orf" << std::setw(6) << std::setfill('0') << (++j)
                    << ";score=" << std::fixed << std::setprecision(3) 
                    << orfs[i].score << "\"\n";
@@ -249,6 +252,7 @@ static bool write_stream(
         if (count > 0) handle << "ORIGIN\n//\n";
         return true;
     } else if (format == "med") {
+        handle << "## MED\n" << "# Translation Table: " << table << '\n';
         char *last_scaffold = nullptr;
         for (int i = 0, j = 0; i < count; i ++) {
             if (last_scaffold != orfs[i].host) {
@@ -314,18 +318,18 @@ bool bio_io::read_source(
 bool bio_io::write_result(
     bio::orf_array &orfs, 
     const std::string &date,
-    bool is_circ,
+    bool is_circ, std::string &code,
     const std::string &filename,
     const std::string &format
 ) {
-    if (filename == "-") return write_stream(std::cout, orfs, date, is_circ, format);
+    if (filename == "-") return write_stream(std::cout, orfs, date, code, is_circ, format);
     else {
         std::ofstream handle(filename);
         if (!handle.is_open()) {
             std::cerr << "\nError: failed to open " << filename << '\n';
             return false;
         }
-        return write_stream(handle, orfs, date, is_circ, format);
+        return write_stream(handle, orfs, date, code, is_circ, format);
     }
 }
 

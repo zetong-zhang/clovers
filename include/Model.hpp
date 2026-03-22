@@ -2,9 +2,9 @@
  * @brief       Model functions for Z-curve.
  * 
  * @author      Zetong Zhang, Yan Lin, Feng Gao
- * @version     1.0.3
+ * @version     1.0.4
  * @date        2025-11-30
- * @modified    2026-03-18
+ * @modified    2026-03-22
  * @license     GNU GPLv3
  * @contact     ylin@tju.edu.cn | fgao@tju.edu.cn
  */
@@ -66,8 +66,15 @@ namespace model {
      * @param init_score    The initial scores.
      * @return              The model
      */
-    svm_model* rbf_train(float *params, int size, int dim, float *init_score, 
-                         float *mins, float *maxs) noexcept;
+    svm_model*  rbf_train(float *params, int size, int dim, float *init_score, 
+                          float *mins, float *maxs) noexcept;
+    /**
+     * @brief               Check if the codon table code is suitable for the genome.
+     * @param scaffolds     The scaffolds of the genome.
+     * @param code          The codon table code.
+     * @return              The score of the suitability.
+     */
+    float       check_code(bio::record_array &scaffolds, int code) noexcept;
     /**
      * @brief               Train a Markov model for TISs.
      * @param orfs          The ORFs.
@@ -77,8 +84,8 @@ namespace model {
      * @param table         The codon table code.
      * @return              True if the model is successfully trained.
      */
-    bool       mm_train (bio::orf_array &orfs, int order, float *params, str_array&starts,
-                         int table, float &pFU, float &pFD, int &max_alter) noexcept;
+    bool        mm_train (bio::orf_array &orfs, int order, float *params, str_array&starts,
+                         std::string table, float &pFU, float &pFD, int &max_alter) noexcept;
     /**
      * @brief               Revise the TISs using the Markov model.
      * @param orfs          The ORFs.
@@ -87,8 +94,8 @@ namespace model {
      * @param minlen       The mininum length of an ORF.
      * @return              The rate of unchanged TISs.
      */
-    float      mm_revise(bio::orf_array &orfs, int order, float *params,float pFU, 
-                         float pFD, int max_alter, int minlen) noexcept;
+    float       mm_revise(bio::orf_array &orfs, int order, float *params,float pFU, 
+                          float pFD, int max_alter, int minlen) noexcept;
 }
 
 extern float W;

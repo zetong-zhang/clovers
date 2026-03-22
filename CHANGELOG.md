@@ -1,6 +1,12 @@
 # Change Log
 All notable changes to this project will be documented in this file.
 
+## [1.0.4] - 2026-03-23
+
+### Added
+- Added auto-detection of translation table before training the model.
+- Added more translation tables, and now there are 5 tables in total (1, 4, 11, 16, 25).
+
 ## [1.0.3] - 2026-03-20
 
 ### Added

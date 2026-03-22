@@ -124,6 +124,54 @@ void model::mlp_predict(int index, float *data, int size, float *probas) noexcep
     delete[] scaled;
 }
 
+float model::check_code(bio::record_array &scaffolds, int code) noexcept {
+    static str_array STARTS { "ATG" };
+    static int minlen = 75;
+    /* set stop codons according to the codon table code */
+    str_array stops {"TAA"};
+    if (code == 4 || code == 11) stops.push_back("TAG");
+    if (code == 16 || code == 11) stops.push_back("TGA");
+    /* extract ORFs */
+    bio::orf_array orfs;
+    for (int i = 0; i < scaffolds.size(); i ++)
+        bio_util::get_orfs(scaffolds[i], STARTS, stops, minlen, false, orfs);
+    const uint32_t n_orfs = (uint32_t) orfs.size();
+    if (n_orfs <= 0) return -1;
+    /* sort ORFs by GC content */
+    std::sort(orfs.begin(), orfs.end(), [](bio::orf& a, bio::orf& b) { return a.gc_frac < b.gc_frac; });
+    int gc_intv_count[N_MODELS+1] = {0};
+    {
+        float max_gc = 0.20;
+        for (int i = 0, j = 0; i < n_orfs; i ++) {
+            if (orfs.at(i).gc_frac > max_gc) {
+                max_gc += 0.01;
+                if ((++j) >= (N_MODELS+1)) break;
+            }
+            gc_intv_count[j] ++;
+        }
+    }
+    /* convert ORFs to Z-curve parameters */
+    float *params = NEW float[DIM_S*n_orfs], *i_scores = NEW float[n_orfs]();
+    if (i_scores == nullptr || params == nullptr) return -1;
+    encoding::encode_orfs(orfs, params, 3);
+    /* predict genes */
+    int off = 0;
+    for (int i = 0; i < N_MODELS; i ++) {
+        int size = gc_intv_count[i];
+        model::mlp_predict(i, params+off*DIM_S, size, i_scores+off);
+        off += gc_intv_count[i];
+    }
+    /* calculate score */
+    int score = 0; off = 0;
+    for (int i = 0; i < n_orfs; i ++) {
+        if (i_scores[i] > UP_PROBA) score += orfs[i].len;
+        off += orfs[i].len;
+    }
+    delete[] params;
+    delete[] i_scores;
+    return (float) score / off;
+}
+
 svm_model* model::rbf_train(float *params, int size, int dim, 
                   float *i_scores, float *mins, float *maxs) noexcept {
     svm_problem prob;
@@ -269,7 +317,7 @@ static void norm_log(int order, float *pm, int nrows) {
 
 bool model::mm_train(
     bio::orf_array &orfs, int order, float *params, str_array &starts, 
-    int table, float &pFU, float &pFD, int &max_alter
+    std::string table, float &pFU, float &pFD, int &max_alter
 ) noexcept {
     float bkg[4] = { 0.0F };
     std::fill_n(params, TIS_S, 1.0F);
@@ -305,10 +353,11 @@ bool model::mm_train(
     float a = bkg[0], c = bkg[1], g = bkg[2], t = bkg[3];
     float s = a*t*g;
     // support for standard
-    if (table != 1) s += g*t*g+t*t*g;
-    float e = t*a*g+t*a*a;
-    // support for mycoplasma
-    if (table != 4) e += t*g*a;
+    if (table != "1") s += g*t*g+t*t*g;
+    float e = t*a*a;
+    // support for mycoplasma, etc.
+    if (table != "4" && table != "25") e += t*g*a;
+    if (table != "16") e += t*a*g;
     float p = s / (s + e), qpi = e / (s + e), P = 0.0F;
 
     pFU = 0, max_alter = 0;

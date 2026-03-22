@@ -91,7 +91,9 @@ Write nucleotide sequences of genes to the selected file.
 
 #### CLOVERS Options  
 * `-g, --table`  
-Specify a genetic codon table to use. (default: 11)
+Specify a genetic codon table to use (1, 4, 11, 16, 25 or auto). (default: 11)  
+
+  **Note:** Auto-selection of codon table function can only determine whether TGA or TAG have been reprogrammed into sense codons.
 
 * `-l, --minlen`  
 Specify the mininum length (nt) of ORFs. (default: 90)
@@ -145,6 +147,9 @@ clovers -i circular.fasta -o output.gff -c
 
 # Use a custom translation table (e.g., table 4 for Mycoplasma)
 clovers -i input.fasta -o output.gff -g 4
+
+# Use auto-detection of translation table
+clovers -i input.fasta -o output.gff -g auto
 ```
 
 ### Advanced Usage
@@ -204,8 +209,10 @@ ORIGIN
     DEFINITION  NC_000913.3
     FEATURES             Location/Qualifiers
         CDS             337..2799
+                        /transl_table=11
                         /note="version=CLOVERS_v1.0.1;ID=orf000001;score=0.974"
         CDS             2801..3733
+                        /transl_table=11
                         /note="version=CLOVERS_v1.0.1;ID=orf000002;score=0.968"
     . . .
     ORIGIN
@@ -213,6 +220,8 @@ ORIGIN
     ```
     **MED File Example:**
     ```
+    ## MED
+    # Translation Table: 4
     # NC_000913.3	4641652 bp	linear	UNA	10-MAR-2026
     337 2799	+
     2801 3733	+
@@ -264,7 +273,7 @@ On July 21, 2025, high-quality assembled genome sequences of 1,789 bacteria and 
 
 **Processing Speed**
 
-Benchmarking was conducted using an Intel Core i7-13620H (16 threads).
+Benchmarking was conducted using an Intel Core i7-13620H (16 threads, auto-selection of codon table **OFF**).
 
 ![proc_speed](.figures/Process_Speed.png)
 

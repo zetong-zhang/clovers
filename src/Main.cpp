@@ -4,7 +4,7 @@
  *                                                         *    
  *   @copyright: (C) 2003-2026 TUBIC, Tianjin University   *
  *   @author:    Zetong Zhang, Yan Lin, Feng Gao           *
- *   @version:   1.0.3                                     *
+ *   @version:   1.0.4                                     *
  *   @date:      2025-11-30                                *
  *   @modified   2025-03-20                                *
  *   @license:   GNU GPLv3                                 *
@@ -78,8 +78,8 @@ int main(int argc, char *argv[]) {
     
     /* clovers parameters */
     options.add_options("CLOVERS")
-        ("g,table",    "Specify a translation table to use.",
-         cxxopts::value<uint32_t>()->default_value("11"))
+        ("g,table",    "Specify a translation table to use (1, 4, 11, 16, 25, auto).",
+         cxxopts::value<std::string>()->default_value("11"))
 
         ("l,minlen",   "Specify the mininum length of ORFs.",
          cxxopts::value<uint32_t>()->default_value("90"))
@@ -133,7 +133,7 @@ int main(int argc, char *argv[]) {
     /* show help information and exit with code 0 */
     if (argc <= 1 || args.count("help")) {
         std::cerr << "- - - - - - - - - - - - - - - - - - - - - - - - - - - -\n"
-                  << "PROTEIN-CODING GENE RECOGNITION SYSTEM OF CLOVERS 1.0.3\n\n"
+                  << "PROTEIN-CODING GENE RECOGNITION SYSTEM OF CLOVERS 1.0.4\n\n"
                   << "Copyright:  (C) 2003-2026 TUBIC,Tianjin University     \n"
                   << "Authors:    Zetong Zhang, Yan Lin*, Feng Gao*          \n"
                   << "Date:       November 30, 2025                          \n"
@@ -165,20 +165,6 @@ int main(int argc, char *argv[]) {
     omp_set_num_threads(num_threads);
     if (!QUIET) std::cerr << "Threads Used:" << std::setw(36) << num_threads << '\n';
     #endif
-    
-    /* initialize translation table and start/stop codon list */
-    uint32_t table = args["table"].as<uint32_t>();
-    if (table == 1) {
-        STARTS.assign({ "ATG "});
-    } else if (table == 4) {
-        STOPS.assign({ "TAA", "TAG" });
-        trans_tbl[14] = 'W';
-    } else if (table != 11) {
-        std::cerr << "\nError: unsupported translation table " << table 
-                  << " (options: 1 (standard), 4 (mycoplasma, spiroplasma), 11 (bacteria, archaea))\n";
-        return 1;
-    }
-    if (!QUIET) std::cerr << "Translation Table:" << std::setw(31) << table << '\n';
 
     /* set mininum gene length */
     auto minlen = args["minlen"].as<uint32_t>();
@@ -195,6 +181,10 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    /* load heuristic models */
+    if (!model::init_models()) return 1;
+    if(!QUIET) std::cerr << "Loaded Model:" << std::setw(37) << "Prokaryota/Phage\n";
+
     /* handle input */
     std::string input = "-";
     if (args.count("input")) input = args["input"].as<std::string>();
@@ -205,6 +195,45 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     if (!QUIET) std::cerr << "Number of Scaffolds: " << std::setw(28) << scaffolds.size() << '\n';
+
+    /* initialize translation table and start/stop codon list */
+    auto table = args["table"].as<std::string>();
+    if (table == "auto") {
+        int codes[3] { 11, 4, 16 };
+        float max_score = 0.0F;
+        for (int i = 0; i < 3; i ++) {
+            if (!QUIET) std::cerr << "Trying Table #" << std::setw(2) << std::setbase('0') << codes[i] << " ...       ";
+            float score = model::check_code(scaffolds, codes[i]);
+            if (score > max_score) {
+                max_score = score;
+                table = std::to_string(codes[i]);
+            }
+            if (!QUIET) std::cerr << std::setw(17) << "Score: " << std::fixed << std::setprecision(3) << score << '\n';
+        }
+    }
+
+    if (table == "1") {
+        STARTS.assign({ "ATG" });
+    } else if (table == "4") {
+        STOPS.assign({ "TAA", "TAG" });
+        trans_tbl[14] = 'W';
+    } else if (table == "16") {
+        STOPS.assign({ "TAA", "TGA" });
+        trans_tbl[11] = 'L';
+    } else if (table == "25") {
+        STOPS.assign({ "TAA", "TAG" });
+        trans_tbl[14] = 'G';
+    } else if (table != "11") {
+        std::cerr << "\nError: unsupported translation table " << table << ".\n\n"
+                  << "Genetic code options: \n\n 1  - Standard\n"
+                  << " 4  - Mycoplasma, Spiroplasma\n"
+                  << " 11 - Bacteria, Archaea\n"
+                  << " 16 - Chlorophycean Mitochondria\n"
+                  << " 25 - Candidate Division SR1, Gracilibacteria\n\n"
+                  << "Please see https://www.ddbj.nig.ac.jp/ddbj/geneticcode-e.html.\n";
+        return 1;
+    }
+    if (!QUIET) std::cerr << "Translation Table:" << std::setw(31) << table << '\n';
 
     size_t total_len = 0;
     float gc_cont = 0.0;
@@ -268,9 +297,7 @@ int main(int argc, char *argv[]) {
     }
     encoding::encode_orfs(orfs, params, 3);
 
-    /* load pre-trained models and calculate scores */
-    if (!model::init_models()) return 1;
-    if(!QUIET) std::cerr << "Loaded Model:" << std::setw(37) << "Prokaryota\n";
+    /* calculate heuristic model scores */
     bool training = args["proc"].as<std::string>() != "meta";
     float *i_scores = NEW float[n_orfs]();
     if (i_scores == nullptr) {
@@ -285,7 +312,6 @@ int main(int argc, char *argv[]) {
         if (!QUIET) std::cerr << "\rInitialization:" << std::setw(32) << (int)(i*1.67) << " %";
         off += gc_intv_count[i];
     }
-
     /* revise gene starts*/
     bool flag = !(bool) args.count("bypass");
     if (flag) {
@@ -390,7 +416,7 @@ int main(int argc, char *argv[]) {
     auto thres = args["thres"].as<float>();
     bio::orf_array putative;
     for (int i = 0, j = 0; i < n_orfs; i ++) {
-        orfs[i].score = std::max(i_scores[i]*W, d_scores[i]);
+        orfs[i].score = std::min(std::max(i_scores[i]*W, d_scores[i]), 1.0F);
         if (orfs[i].score > thres) putative.push_back(orfs[i]);
     }
 
@@ -436,7 +462,7 @@ int main(int argc, char *argv[]) {
         }
     });
     std::string date = format_date(std::chrono::system_clock::now());
-    bio_io::write_result(putative, date, circ, output, format);
+    bio_io::write_result(putative, date, circ, table, output, format);
 
     /* write protein sequences */
     if (args.count("faa")) {
