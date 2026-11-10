@@ -45,12 +45,12 @@ conda install -c conda-forge -c bioconda clovers
 Download the latest precompiled binary executable file (Linux/Windows/MacOS, 64-bit) from the [release page](https://tubic.tju.edu.cn/clovers/downloads), and decompress it to the directory of your choice. 
 
 ```bash
-wget https://tubic.tju.edu.cn/clovers/static/pkg/clovers-1.2.1-linux64.tar.gz
-# wget https://tubic.tju.edu.cn/clovers/static/pkg/clovers-1.2.1-win64.zip
-# wget https://tubic.tju.edu.cn/clovers/static/pkg/clovers-1.2.1-macos64.tar.gz
-tar -xvf clovers-1.2.1-linux64.tar.gz
-# tar -xvf clovers-1.2.1-win64.zip
-# tar -xvf clovers-1.2.1-macos64.tar.gz
+wget https://tubic.tju.edu.cn/clovers/static/pkg/clovers-1.2.3-linux64.tar.gz
+# wget https://tubic.tju.edu.cn/clovers/static/pkg/clovers-1.2.3-win64.zip
+# wget https://tubic.tju.edu.cn/clovers/static/pkg/clovers-1.2.3-macos64.tar.gz
+tar -xvf clovers-1.2.3-linux64.tar.gz
+# tar -xvf clovers-1.2.3-win64.zip
+# tar -xvf clovers-1.2.3-macos64.tar.gz
 ```
 
 If there is no distribution suitable for your operating system, you can modify the code yourself and compile and install it.   
@@ -215,8 +215,8 @@ SQ
     ##gff-version 3
     # trans_tbl: 11
     # NC_000913.3	4641652 bp	circular	UNA	19-MAY-2026
-    NC_000913.3	CLOVERS_v1.2.2	CDS	337	2799	0.974	+	0	ID=ORF000001;partial=00
-    NC_000913.3	CLOVERS_v1.2.2	CDS	2801	3733	0.968	+	0	ID=ORF000002;partial=00
+    NC_000913.3	CLOVERS_v1.2.3	CDS	337	2799	0.974	+	0	ID=ORF000001;partial=00;r_score=0.991
+    NC_000913.3	CLOVERS_v1.2.3	CDS	2801	3733	0.968	+	0	ID=ORF000002;partial=00;r_score=0.985
     . . .
     ```
     **GenBank File Example:**
@@ -228,13 +228,13 @@ SQ
                          /locus_tag=ORF000001
                          /transl_table=11
                          /codon_start=1
-                         /note="Derived by protein-coding gene prediction method: CLOVERS_v1.2.2"
+                         /note="Derived by protein-coding gene prediction method: CLOVERS_v1.2.3"
                          /translation="MRVLKFGG...LGV*"
          CDS             2801..3733
                          /locus_tag=ORF000002
                          /transl_table=11
                          /codon_start=1
-                         /note="Derived by protein-coding gene prediction method: CLOVERS_v1.2.2"
+                         /note="Derived by protein-coding gene prediction method: CLOVERS_v1.2.3"
                          /translation="MVKVYAPA...LEN*"
     . . .
     ORIGIN

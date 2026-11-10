@@ -3,9 +3,9 @@
  * 
  * @copyright (C)2026 TUBIC, Tianjin University
  * @authors:  Zetong Z, You Z, Lin Y*, Gao F*
- * @version   1.2.2
+ * @version   1.2.3
  * @date      2026-05-01
- * @modified  2026-10-28
+ * @modified  2026-11-10
  * @license:  GNU-GPLv3
  */
 #pragma once
@@ -54,7 +54,7 @@ static_assert(sizeof(float) == 4, "embedded MLP weights require 32-bit float");
 /* to_string */
 #define Str std::to_string
 /* software version */
-#define VERSION "CLOVERS_v1.2.2"
+#define VERSION "CLOVERS_v1.2.3"
 /* no throw memory error new */
 #define NEW new (std::nothrow)
 /* The buffer size for file reading. */
@@ -500,11 +500,13 @@ namespace bioinfo {
         }
         /* freeze 1-based relative coordinates, unwrapping origin-spanning ORFs */
         orf &froze() {
-            const long long L = (long long) host->len;
-            long long begin = strand ? -(long long) end : (long long) start;
-            begin = ((begin % L) + L) % L;
-            rstart = (int) begin + 1;
-            rend = (int) ((begin + (long long) len - 1) % L) + 1;  // len == end - start
+            rstart = strand ? host->len - end : start;
+            rend = strand ? host->len - start : end;
+            if (host->circ) {
+                rstart += host->len * (rstart < 0);
+                rend -= host->len * (rend > host->len);
+            }
+            rstart ++;
             return *this;
         }
         /* convert to FASTA header */
@@ -552,8 +554,9 @@ namespace bioinfo {
             std::ostringstream oss;
             oss << host->name << '\t' << VERSION << '\t' << type << '\t' << rstart << '\t' << rend << '\t'
                 << std::fixed << std::setprecision(3) << t_score << '\t' << (strand?'-':'+')
-                << "\t0\tID=ORF" << std::setw(6) << std::setfill('0') << idx+1
-                << ";partial=" << (edge_type>=5) << (edge_type==3 || edge_type==8);
+                << "\t0\tID=ORF" << std::setw(6) << std::setfill('0') << idx+1 << ";partial=" 
+                << (edge_type>=5) << (edge_type==3 || edge_type==8) << ";r_score=" << std::fixed 
+                << std::setprecision(3) << r_score;
             return oss.str();
         }
         /* convert to BED line (BED6: chrom, chromStart(0-based), chromEnd(half-open), name, score, strand) */
@@ -643,7 +646,8 @@ namespace bioinfo {
         /* get positive genes */
         void yield(str proc, float thres, orfs &genes) {
             for (int i = 0, j = 0; i < size(); i ++) {
-                float score = std::max(arr[i].i_score, arr[i].c_score);
+                float score = arr[i].c_score; 
+                if (proc != "Metagenome") score = std::max(arr[i].i_score, score);
                 if ((arr[i].t_score = score) >= thres) 
                     genes.arr.push_back(arr[i].froze());
             }
@@ -678,7 +682,7 @@ namespace bioinfo {
                         types.push_back(5);
                     }
                     
-                    for (size_t ps = phase; ps < send; ps += 3) {
+                    for (size_t ps = phase; ps + 3 < send; ps += 3) {
                         int match = seq.codon_type(ps, strand, start_types);
                         if (match > -1) {
                             if (starts.empty()) { if (ps >= seq.len) break; }
@@ -1229,7 +1233,7 @@ namespace model {
         }
 
         /* prediction on all the orfs */
-        void predict() {
+        void predict(float eps=1E-4) {
             const int n = (int) orfs.size();
             if (n == 0 || !model) return;
 
@@ -1251,7 +1255,9 @@ namespace model {
             #endif
             for (int i = 0; i < n; i ++) {
                 float *row = data + i * DIM_A;
-                orfs[i].c_score = svm_predict_score(model, row, DIM_A);
+                if (orfs[i].i_score >= eps) {
+                    orfs[i].c_score = svm_predict_score(model, row, DIM_A);
+                }
             }
         }
 
@@ -1765,7 +1771,7 @@ namespace model {
             int last_id = -1;
             for (int i = 0; i < count; i++) {          // serial: host dedup
                 bioinfo::orf &orf = orfs[i];
-                if (orf.starts.empty()) {
+                if (orf.starts.empty() || orf.i_score < 1E-5F) {
                     skip[i] = 1;
                     begin[i + 1] = begin[i];
                     continue;

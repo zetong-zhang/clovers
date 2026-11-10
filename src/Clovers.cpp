@@ -143,7 +143,7 @@ class Clovers {
 
         if (argc <= 1 || args.count("help")) {
             Debug() << "- - - - - - - - - - - - - - - - - - - - - - - - - - - -\n"
-                       "PROTEIN-CODING GENE RECOGNITION SYSTEM OF CLOVERS 1.2.2\n\n"
+                       "PROTEIN-CODING GENE RECOGNITION SYSTEM OF CLOVERS 1.2.3\n\n"
                        "Copyright:  (C) 2003-2026 TUBIC, Tianjin University    \n"
                        "Authors:    Zetong Z, You Z, Lin Y*, Gao F*            \n"
                        "Date:       March 31, 2026                             \n"
@@ -268,10 +268,8 @@ class Clovers {
         return *this;
     }
 
-    /* Z-curve encode ORFs and score them with GC-specific MLP models
-     * (single-genome route only) */
+    /* Z-curve encode ORFs and score them with GC-specific MLP models. */
     Clovers &Init_Scores(bool debug=true) {
-        if (proc == "Metagenome" && debug) return *this;
         zcurve::encode(orfs);
         int gc_intv[N_MODELS] = {0};
         {

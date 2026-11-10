@@ -1,6 +1,16 @@
 # Change Log
 All notable changes to this project will be documented in this file.
 
+## [1.2.3] - 2026-11-10
+
+### Changed
+- Metagenome runs are about 30% faster than v1.2.2: start-codon candidates are now pre-filtered with the init score, so TISA-CNN scores fewer ORFs (4.6 Mb fragmented input: 6.0 s -> 4.0 s on 8 threads). Predictions are unchanged.
+- Single-genome prediction also skips ORFs with a very low init score and is about 20% faster than v1.2.2. Predictions are unchanged.
+- GFF3 output now reports the gene start score as an additional `r_score` attribute.
+
+### Fixed
+- ORF coordinates no longer overflow when writing results for very short contigs.
+
 ## [1.2.2] - 2026-10-28
 
 ### Changed
